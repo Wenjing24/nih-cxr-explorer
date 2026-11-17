@@ -1,8 +1,0 @@
-name: bmi706
-channels:
-  - conda-forge
-dependencies:
-  - python=3.11
-  - numpy
-  - pandas
-  - nodejs>=20

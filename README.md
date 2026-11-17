@@ -25,36 +25,42 @@ Charts use a colour-blind-safe, Viridis-derived palette. Line styles, labels and
 
 ## Setup
 
-Requirements: Node ≥ 18 and Python 3 with numpy and pandas (Python is only needed to regenerate the data).
-
-To install the runtime dependencies into the `bmi706` Conda environment, run
-these commands from the repository directory (also works in PowerShell):
+On Windows, open PowerShell in the repository directory and run:
 
 ```powershell
-conda env update --name bmi706 --file environment.yml
-conda activate bmi706
-npm ci
-npm run dev
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-Node.js and Python are installed in `bmi706`; npm installs the web dependencies
-in this repository's `node_modules` directory. The preprocessed data is already
-included, so the original CSV is only needed when regenerating it.
+No prior Conda, Python, Node.js or npm installation is required. The script
+downloads isolated copies of uv, Python 3.11 and the current Node.js LTS release
+into this repository, creates `.venv`, installs the Python dependencies from
+`requirements.txt`, installs the web dependencies and starts the development
+server. An internet connection is required the first time it runs.
 
-```bash
-npm ci
-npm run preprocess        # optional: regenerates public/data/images.json and tests/reference.json
-                          # from ../Data_Entry_2017.csv (or: python preprocess/preprocess.py path/to/csv)
-npm run dev               # http://localhost:5173
-npm run build             # static site in dist/
+Open the URL shown in the terminal, normally <http://localhost:5173>. Press
+`Ctrl+C` to stop the server. The preprocessed data is already included, so the
+original CSV is only needed when regenerating it.
+
+Additional commands:
+
+```powershell
+.\.tools\node\npm.cmd run preprocess   # optional: regenerate the JSON data
+.\.tools\node\npm.cmd run build        # create the static site in dist/
+```
+
+To preprocess a CSV in another location, append its path after `--`, for example:
+
+```powershell
+.\.tools\node\npm.cmd run preprocess -- C:\data\Data_Entry_2017.csv
 ```
 
 ## Tests
 
-```bash
-npm test                  # 43 unit tests: TypeScript aggregations vs. independent pandas results
-npx playwright install chromium
-npm run build && npm run e2e   # 54 browser checks on desktop + phone widths, screenshots in tests/screenshots/
+```powershell
+.\.tools\node\npm.cmd test
+.\.tools\node\npx.cmd playwright install chromium
+.\.tools\node\npm.cmd run build
+.\.tools\node\npm.cmd run e2e
 ```
 
 ## Deploying to GitHub Pages

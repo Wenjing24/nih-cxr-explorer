@@ -1,0 +1,489 @@
+{
+ "totals": {
+  "images": 112120,
+  "patients": 30805,
+  "patientsBySex": {
+   "M": 16630,
+   "F": 14175
+  },
+  "imagesByView": {
+   "PA": 67310,
+   "AP": 44810
+  },
+  "missingAgeImages": 16,
+  "noFindingImages": 60361
+ },
+ "findings": {
+  "Infiltration": {
+   "images": 19894,
+   "patients": 8035,
+   "PA": 9353,
+   "AP": 10541
+  },
+  "Effusion": {
+   "images": 13317,
+   "patients": 4275,
+   "PA": 6589,
+   "AP": 6728
+  },
+  "Atelectasis": {
+   "images": 11559,
+   "patients": 4981,
+   "PA": 5728,
+   "AP": 5831
+  },
+  "Nodule": {
+   "images": 6331,
+   "patients": 3394,
+   "PA": 4177,
+   "AP": 2154
+  },
+  "Mass": {
+   "images": 5782,
+   "patients": 2568,
+   "PA": 3567,
+   "AP": 2215
+  },
+  "Pneumothorax": {
+   "images": 5302,
+   "patients": 1487,
+   "PA": 3407,
+   "AP": 1895
+  },
+  "Consolidation": {
+   "images": 4667,
+   "patients": 2150,
+   "PA": 1521,
+   "AP": 3146
+  },
+  "Pleural_Thickening": {
+   "images": 3385,
+   "patients": 2006,
+   "PA": 2418,
+   "AP": 967
+  },
+  "Cardiomegaly": {
+   "images": 2776,
+   "patients": 1566,
+   "PA": 1563,
+   "AP": 1213
+  },
+  "Emphysema": {
+   "images": 2516,
+   "patients": 1046,
+   "PA": 1499,
+   "AP": 1017
+  },
+  "Edema": {
+   "images": 2303,
+   "patients": 1073,
+   "PA": 276,
+   "AP": 2027
+  },
+  "Fibrosis": {
+   "images": 1686,
+   "patients": 1260,
+   "PA": 1408,
+   "AP": 278
+  },
+  "Pneumonia": {
+   "images": 1431,
+   "patients": 1008,
+   "PA": 630,
+   "AP": 801
+  },
+  "Hernia": {
+   "images": 227,
+   "patients": 134,
+   "PA": 192,
+   "AP": 35
+  }
+ },
+ "complexity": {
+  "PA": {
+   "0": 39302,
+   "1": 17828,
+   "2": 7109,
+   "3": 2275,
+   "4": 586,
+   "5": 159,
+   "6": 41,
+   "7": 9,
+   "9": 1
+  },
+  "AP": {
+   "0": 21059,
+   "1": 13135,
+   "2": 7197,
+   "3": 2581,
+   "4": 661,
+   "5": 142,
+   "6": 26,
+   "7": 7,
+   "8": 1,
+   "9": 1
+  }
+ },
+ "imagesPerPatientAll": [
+  17503,
+  4113,
+  2100,
+  1330,
+  938,
+  2596,
+  1422,
+  652,
+  151
+ ],
+ "imagesPerPatient": {
+  "Hernia": [
+   35,
+   25,
+   9,
+   9,
+   5,
+   27,
+   11,
+   11,
+   2
+  ],
+  "Pneumonia": [
+   79,
+   56,
+   64,
+   45,
+   40,
+   196,
+   210,
+   214,
+   104
+  ],
+  "Infiltration": [
+   1896,
+   922,
+   713,
+   544,
+   452,
+   1572,
+   1154,
+   631,
+   151
+  ]
+ },
+ "venn": {
+  "selection": [
+   "Atelectasis",
+   "Effusion",
+   "Infiltration"
+  ],
+  "images": {
+   "Atelectasis": 6259,
+   "Effusion": 7281,
+   "Infiltration": 13869,
+   "Atelectasis+Effusion": 2036,
+   "Atelectasis+Infiltration": 2025,
+   "Effusion+Infiltration": 2761,
+   "Atelectasis+Effusion+Infiltration": 1239,
+   "__none__": 76650
+  },
+  "patients": {
+   "Atelectasis": 1469,
+   "Effusion": 967,
+   "Infiltration": 4239,
+   "Atelectasis+Effusion": 545,
+   "Atelectasis+Infiltration": 1033,
+   "Effusion+Infiltration": 829,
+   "Atelectasis+Effusion+Infiltration": 1934,
+   "__none__": 19789
+  },
+  "pairImages": {
+   "Cardiomegaly": 2649,
+   "Edema": 2176,
+   "Cardiomegaly+Edema": 127,
+   "__none__": 107168
+  }
+ },
+ "prevalenceEffusionImages": {
+  "M": {
+   "0": {
+    "n": 838,
+    "k": 54
+   },
+   "10": {
+    "n": 3109,
+    "k": 293
+   },
+   "20": {
+    "n": 7577,
+    "k": 757
+   },
+   "30": {
+    "n": 8663,
+    "k": 962
+   },
+   "40": {
+    "n": 11399,
+    "k": 1084
+   },
+   "50": {
+    "n": 15466,
+    "k": 1966
+   },
+   "60": {
+    "n": 11580,
+    "k": 1598
+   },
+   "70": {
+    "n": 4084,
+    "k": 625
+   },
+   "80": {
+    "n": 580,
+    "k": 91
+   },
+   "90": {
+    "n": 32,
+    "k": 4
+   }
+  },
+  "F": {
+   "0": {
+    "n": 565,
+    "k": 26
+   },
+   "10": {
+    "n": 2312,
+    "k": 212
+   },
+   "20": {
+    "n": 5221,
+    "k": 462
+   },
+   "30": {
+    "n": 7650,
+    "k": 725
+   },
+   "40": {
+    "n": 10332,
+    "k": 1269
+   },
+   "50": {
+    "n": 11940,
+    "k": 1563
+   },
+   "60": {
+    "n": 7692,
+    "k": 1065
+   },
+   "70": {
+    "n": 2557,
+    "k": 456
+   },
+   "80": {
+    "n": 474,
+    "k": 91
+   },
+   "90": {
+    "n": 33,
+    "k": 13
+   }
+  }
+ },
+ "prevalenceEffusionPatients": {
+  "M": {
+   "0": {
+    "n": 332,
+    "k": 24
+   },
+   "10": {
+    "n": 858,
+    "k": 97
+   },
+   "20": {
+    "n": 2062,
+    "k": 222
+   },
+   "30": {
+    "n": 2661,
+    "k": 263
+   },
+   "40": {
+    "n": 3362,
+    "k": 363
+   },
+   "50": {
+    "n": 4127,
+    "k": 603
+   },
+   "60": {
+    "n": 3077,
+    "k": 532
+   },
+   "70": {
+    "n": 1220,
+    "k": 238
+   },
+   "80": {
+    "n": 203,
+    "k": 38
+   },
+   "90": {
+    "n": 11,
+    "k": 3
+   }
+  },
+  "F": {
+   "0": {
+    "n": 257,
+    "k": 13
+   },
+   "10": {
+    "n": 675,
+    "k": 63
+   },
+   "20": {
+    "n": 1842,
+    "k": 145
+   },
+   "30": {
+    "n": 2537,
+    "k": 271
+   },
+   "40": {
+    "n": 3361,
+    "k": 427
+   },
+   "50": {
+    "n": 3654,
+    "k": 552
+   },
+   "60": {
+    "n": 2172,
+    "k": 412
+   },
+   "70": {
+    "n": 713,
+    "k": 138
+   },
+   "80": {
+    "n": 146,
+    "k": 23
+   },
+   "90": {
+    "n": 7,
+    "k": 1
+   }
+  }
+ },
+ "filtered_F_AP_20_39": {
+  "images": 4850,
+  "patients": 1001,
+  "findings": {
+   "Infiltration": {
+    "images": 1191,
+    "patients": 311,
+    "PA": 0,
+    "AP": 1191
+   },
+   "Effusion": {
+    "images": 588,
+    "patients": 191,
+    "PA": 0,
+    "AP": 588
+   },
+   "Atelectasis": {
+    "images": 464,
+    "patients": 209,
+    "PA": 0,
+    "AP": 464
+   },
+   "Nodule": {
+    "images": 183,
+    "patients": 91,
+    "PA": 0,
+    "AP": 183
+   },
+   "Mass": {
+    "images": 167,
+    "patients": 89,
+    "PA": 0,
+    "AP": 167
+   },
+   "Pneumothorax": {
+    "images": 165,
+    "patients": 63,
+    "PA": 0,
+    "AP": 165
+   },
+   "Consolidation": {
+    "images": 358,
+    "patients": 131,
+    "PA": 0,
+    "AP": 358
+   },
+   "Pleural_Thickening": {
+    "images": 78,
+    "patients": 41,
+    "PA": 0,
+    "AP": 78
+   },
+   "Cardiomegaly": {
+    "images": 151,
+    "patients": 80,
+    "PA": 0,
+    "AP": 151
+   },
+   "Emphysema": {
+    "images": 84,
+    "patients": 48,
+    "PA": 0,
+    "AP": 84
+   },
+   "Edema": {
+    "images": 269,
+    "patients": 114,
+    "PA": 0,
+    "AP": 269
+   },
+   "Fibrosis": {
+    "images": 31,
+    "patients": 19,
+    "PA": 0,
+    "AP": 31
+   },
+   "Pneumonia": {
+    "images": 97,
+    "patients": 61,
+    "PA": 0,
+    "AP": 97
+   },
+   "Hernia": {
+    "images": 0,
+    "patients": 0,
+    "PA": 0,
+    "AP": 0
+   }
+  },
+  "venn": {
+   "Atelectasis": 240,
+   "Effusion": 313,
+   "Infiltration": 859,
+   "Atelectasis+Effusion": 63,
+   "Atelectasis+Infiltration": 120,
+   "Effusion+Infiltration": 171,
+   "Atelectasis+Effusion+Infiltration": 41,
+   "__none__": 3043
+  },
+  "ipp_Effusion": [
+   18,
+   17,
+   20,
+   14,
+   20,
+   32,
+   33,
+   28,
+   9
+  ]
+ }
+}

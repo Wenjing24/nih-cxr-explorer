@@ -4,14 +4,16 @@ An interactive web prototype for exploring the **NIH ChestX-ray14** metadata (`D
 
 | # | Page | What it shows | Unit |
 |---|------|---------------|------|
-| 1 | Overview | Patients by recorded gender, patients by age, patients by number of images (log/linear), images by view position, how often each finding occurs | patients / images (labelled on each chart) |
+| 1 | Overview | Patients by recorded gender, patients by age, patients by number of images, images by view position, how often each finding occurs | patients / images (labelled on each chart) |
 | 2 | Variables vs. complexity | Number of findings per image by view (PA/AP lines), age × complexity (100% stacked), mean findings by age, images per patient by age (colour = mean findings) | images / patients |
-| 3 | Finding co-occurrence | Interactive area-proportional Euler/Venn diagram for 1–3 findings, a region table and conditional rates | images **or** patients (toggle) |
+| 3 | Finding co-occurrence | Interactive UpSet plot for 1–3 findings, an exact-intersection table and conditional rates | images **or** patients (toggle) |
 | 4 | Findings by age & gender | Prevalence (or count) by 5- or 10-year age bin, male (solid) vs female (dashed), one panel per finding | % / # of images **or** patients |
 | 5 | Images per patient | Histogram of images per patient for patients with each finding, with an all-patient reference | patients |
 | 6 | View position (AP/PA) | 100% stacked AP/PA bars per finding, with [n] image counts and the overall AP share | % of images |
 
 Pages 3–6 share one filter state: up to 3 findings, recorded gender, view position and an age range. The state is kept when you switch pages and is written to the URL, so a reload or a shared link restores it. Page 6 ignores the view-position filter, since applying it would make every bar a single colour.
+
+Charts use a colour-blind-safe, Viridis-derived palette. Line styles, labels and UpSet membership dots provide redundant encodings where series need to be distinguished.
 
 ## Data handling
 
@@ -23,12 +25,26 @@ Pages 3–6 share one filter state: up to 3 findings, recorded gender, view posi
 
 ## Setup
 
-Requirements: Node ≥ 18 and Python 3 with pandas (pandas is only needed to regenerate the data).
+Requirements: Node ≥ 18 and Python 3 with numpy and pandas (Python is only needed to regenerate the data).
+
+To install the runtime dependencies into the `bmi706` Conda environment, run
+these commands from the repository directory (also works in PowerShell):
+
+```powershell
+conda env update --name bmi706 --file environment.yml
+conda activate bmi706
+npm ci
+npm run dev
+```
+
+Node.js and Python are installed in `bmi706`; npm installs the web dependencies
+in this repository's `node_modules` directory. The preprocessed data is already
+included, so the original CSV is only needed when regenerating it.
 
 ```bash
-npm install
+npm ci
 npm run preprocess        # optional: regenerates public/data/images.json and tests/reference.json
-                          # from ../Data_Entry_2017.csv (or: python3 preprocess/preprocess.py path/to/csv)
+                          # from ../Data_Entry_2017.csv (or: python preprocess/preprocess.py path/to/csv)
 npm run dev               # http://localhost:5173
 npm run build             # static site in dist/
 ```
@@ -36,7 +52,7 @@ npm run build             # static site in dist/
 ## Tests
 
 ```bash
-npm test                  # 49 unit tests: TypeScript aggregations vs. independent pandas results
+npm test                  # 43 unit tests: TypeScript aggregations vs. independent pandas results
 npx playwright install chromium
 npm run build && npm run e2e   # 54 browser checks on desktop + phone widths, screenshots in tests/screenshots/
 ```

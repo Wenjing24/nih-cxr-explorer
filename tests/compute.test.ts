@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { toDataset, type RawDataset, popcount } from '../src/lib/data';
 import {
   allImages, countPatients, filterImages, findingBit, findingCounts, imagesPerPatient,
-  imagesPerPatientCounts, overview, prevalenceByAgeSex, vennCounts, complexityByView,
+  imagesPerPatientCounts, overview, prevalenceByAgeSex, intersectionCounts, complexityByView,
   complexityByAge, anyFindingMask,
 } from '../src/lib/compute';
 import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, toggleFinding, CLEARED_FILTERS } from '../src/lib/filters';
@@ -17,7 +17,7 @@ const ds = toDataset(raw);
 const all = allImages(ds);
 const nf = DEFAULT_FILTERS;
 
-/** convert reference venn object (name keys) to region bitmask map for a selection */
+/** convert reference intersection object (name keys) to a region bitmask map */
 function refRegions(obj: Record<string, number>, sel: string[]) {
   const m = new Map<number, number>();
   for (const [k, v] of Object.entries(obj)) {
@@ -99,17 +99,17 @@ describe('label complexity', () => {
   });
 });
 
-describe('Venn regions', () => {
+describe('intersection regions', () => {
   const sel = ref.venn.selection as string[];
   it('3-set image regions are exact and partition all images', () => {
-    const v = vennCounts(ds, all, sel, 'images');
+    const v = intersectionCounts(ds, all, sel, 'images');
     expect(v.regions).toEqual(refRegions(ref.venn.images, sel));
     expect(v.none).toBe(ref.venn.images.__none__);
     expect(v.denominator).toBe(ds.n);
     sel.forEach((f, i) => expect(v.totals[i]).toBe(ref.findings[f].images));
   });
   it('3-set patient regions (ever-had semantics)', () => {
-    const v = vennCounts(ds, all, sel, 'patients');
+    const v = intersectionCounts(ds, all, sel, 'patients');
     expect(v.regions).toEqual(refRegions(ref.venn.patients, sel));
     expect(v.none).toBe(ref.venn.patients.__none__);
     expect(v.denominator).toBe(ds.nPatients);
@@ -117,11 +117,11 @@ describe('Venn regions', () => {
   });
   it('2-set regions', () => {
     const s2 = ['Cardiomegaly', 'Edema'];
-    const v = vennCounts(ds, all, s2, 'images');
+    const v = intersectionCounts(ds, all, s2, 'images');
     expect(v.regions).toEqual(refRegions(ref.venn.pairImages, s2));
   });
   it('empty selection: everything is "none"', () => {
-    const v = vennCounts(ds, all, [], 'images');
+    const v = intersectionCounts(ds, all, [], 'images');
     expect(v.regions.size).toBe(0);
     expect(v.none).toBe(ds.n);
   });
@@ -180,9 +180,9 @@ describe('shared filters', () => {
       expect([name, r.images, r.patients, r.AP, r.PA]).toEqual([name, e.images, e.patients, e.AP, e.PA]);
     }
   });
-  it('filtered Venn and images-per-patient', () => {
+  it('filtered intersections and images-per-patient', () => {
     const sel = ref.venn.selection as string[];
-    expect(vennCounts(ds, idx, sel, 'images').regions).toEqual(refRegions(R.venn, sel));
+    expect(intersectionCounts(ds, idx, sel, 'images').regions).toEqual(refRegions(R.venn, sel));
     const r = imagesPerPatient(ds, imagesPerPatientCounts(ds, idx), findingBit(ds, 'Effusion'));
     expect(r.bins).toEqual(R.ipp_Effusion);
   });
@@ -197,7 +197,7 @@ describe('shared filters', () => {
   });
   it('a filter combination with no matches returns empty results safely', () => {
     const e = filterImages(ds, { ...nf, ageMin: 100, ageMax: 100, sex: 'F', view: 'PA' });
-    const v = vennCounts(ds, e, ['Hernia'], 'images');
+    const v = intersectionCounts(ds, e, ['Hernia'], 'images');
     expect(v.denominator).toBe(e.length);
     const r = imagesPerPatient(ds, imagesPerPatientCounts(ds, e), findingBit(ds, 'Hernia'));
     expect(r.median).toBeNull();

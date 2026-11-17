@@ -103,11 +103,11 @@ export function findingCounts(ds: Dataset, idx: ArrayLike<number>): FindingCount
   return res;
 }
 
-// ---------------------------------------------------------------- Venn / Euler
+// ---------------------------------------------------------------- intersections / UpSet
 
-export type VennUnit = 'images' | 'patients';
+export type CountUnit = 'images' | 'patients';
 
-export interface VennResult {
+export interface IntersectionResult {
   /** exclusive region counts, keyed by bitmask over the selection (1..2^k-1) */
   regions: Map<number, number>;
   /** set totals (inclusive) per selected finding */
@@ -119,11 +119,11 @@ export interface VennResult {
 }
 
 /**
- * Exclusive Venn region counts for up to 3 findings.
+ * Exclusive intersection counts for up to 3 findings.
  * images:   each filtered image falls in exactly one region.
  * patients: a patient is "in" a finding if ANY of their filtered images carries it.
  */
-export function vennCounts(ds: Dataset, idx: ArrayLike<number>, selection: string[], unit: VennUnit): VennResult {
+export function intersectionCounts(ds: Dataset, idx: ArrayLike<number>, selection: string[], unit: CountUnit): IntersectionResult {
   const bits = selection.map((s) => findingBit(ds, s));
   const k = bits.length;
   const regionOf = (m: number) => {
@@ -187,7 +187,7 @@ export function prevalenceByAgeSex(
   ds: Dataset,
   idx: ArrayLike<number>,
   findingMask: number,
-  unit: VennUnit,
+  unit: CountUnit,
   binWidth: number,
 ): { series: PrevalenceSeries[]; excluded: number } {
   const nb = Math.ceil(100 / binWidth);

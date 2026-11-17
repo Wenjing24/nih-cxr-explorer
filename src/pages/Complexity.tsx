@@ -65,7 +65,6 @@ function ViewLines({ PA, AP }: { PA: number[]; AP: number[] }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const tipFor = useTipHandlers();
   const [unit, setUnit] = useState<'count' | 'share'>('count');
-  const [scale, setScale] = useState<'linear' | 'log'>('linear');
   const w = width - M.left - M.right;
   const h = H - M.top - M.bottom;
   const tot = { PA: d3.sum(PA), AP: d3.sum(AP) };
@@ -73,20 +72,18 @@ function ViewLines({ PA, AP }: { PA: number[]; AP: number[] }) {
   const val = (v: 'PA' | 'AP', k: number) => (unit === 'count' ? (v === 'PA' ? PA : AP)[k] : (v === 'PA' ? PA : AP)[k] / tot[v]);
   const x = d3.scalePoint<number>().domain(ks).range([0, w]).padding(0.3);
   const maxV = d3.max(ks.flatMap((k) => [val('PA', k), val('AP', k)]))!;
-  const minPos = unit === 'count' ? 1 : 1e-5;
-  const y = scale === 'log' ? d3.scaleLog().domain([minPos, maxV * 1.3]).range([h, 0]).clamp(true) : d3.scaleLinear().domain([0, maxV * 1.08]).range([h, 0]).nice();
-  const yy = (v: number) => (scale === 'log' ? y(Math.max(minPos, v)) : y(v));
+  const y = d3.scaleLinear().domain([0, maxV * 1.08]).range([h, 0]).nice();
+  const yy = (v: number) => y(v);
   const f = unit === 'count' ? d3.format('~s') : (v: number) => pct(v, v < 0.01 ? 2 : 0);
   return (
     <div ref={ref} className="chart">
       <div className="controls">
         <Segmented label="Y" value={unit} onChange={setUnit} options={[{ value: 'count', label: '# images' }, { value: 'share', label: '% within view' }]} />
-        <Segmented label="Scale" value={scale} onChange={setScale} options={[{ value: 'linear', label: 'Linear' }, { value: 'log', label: 'Log' }]} />
-        <Legend items={[{ label: 'PA', color: VIEW_COLORS.PA, swatch: 'line' }, { label: 'AP', color: VIEW_COLORS.AP, swatch: 'line' }]} />
+        <Legend items={[{ label: 'PA', color: VIEW_COLORS.PA, swatch: 'line' }, { label: 'AP', color: VIEW_COLORS.AP, swatch: 'line', dashed: true }]} />
       </div>
       <svg width={width} height={H}>
         <g transform={`translate(${M.left},${M.top})`}>
-          <Axis scale={y as any} orient="left" ticks={5} grid gridSize={w} format={scale === 'log' ? (v: number) => (Math.log10(v) % 1 === 0 ? (f as any)(v) : '') : (f as any)} />
+          <Axis scale={y as any} orient="left" ticks={5} grid gridSize={w} format={f as any} />
           <Axis scale={x as any} orient="bottom" transform={`translate(0,${h})`} />
           {(['PA', 'AP'] as const).map((v) => (
             <g key={v}>
@@ -95,6 +92,7 @@ function ViewLines({ PA, AP }: { PA: number[]; AP: number[] }) {
                 fill="none"
                 stroke={VIEW_COLORS[v]}
                 strokeWidth={2.5}
+                strokeDasharray={v === 'AP' ? '7 4' : undefined}
               />
               {ks.map((k) => {
                 const n = (v === 'PA' ? PA : AP)[k];
@@ -240,7 +238,7 @@ function IppByAge({ rows }: { rows: ReturnType<typeof imagesPerPatientByAge> }) 
   // ages with very few patients produce noisy means; keep them but make them faint
   const y = d3.scaleLinear().domain([0, d3.max(rows, (r) => r.meanImages)! * 1.08]).range([h, 0]).nice();
   const ext = d3.extent(rows, (r) => r.meanFindings) as [number, number];
-  const c = d3.scaleSequential(d3.interpolateYlGnBu).domain([ext[0] - 0.1 * (ext[1] - ext[0]), ext[1]]);
+  const c = d3.scaleSequential(d3.interpolateViridis).domain([ext[0] - 0.1 * (ext[1] - ext[0]), ext[1]]);
   const legendW = 140;
   return (
     <div ref={ref} className="chart">

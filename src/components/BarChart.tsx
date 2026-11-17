@@ -14,13 +14,12 @@ export interface Bar {
 
 /** Vertical bar chart with labelled axes. Values must be non-negative. */
 export function BarChart({
-  bars, xLabel, yLabel, height = 260, log = false, yFormat, valueLabels = true, refLabel, maxY,
+  bars, xLabel, yLabel, height = 260, yFormat, valueLabels = true, refLabel, maxY,
 }: {
   bars: Bar[];
   xLabel: string;
   yLabel: string;
   height?: number;
-  log?: boolean;
   yFormat?: (v: number) => string;
   valueLabels?: boolean;
   refLabel?: string;
@@ -34,17 +33,15 @@ export function BarChart({
   const h = height - m.top - m.bottom;
   const x = d3.scaleBand().domain(bars.map((b) => b.key)).range([0, w]).padding(0.22);
   const top = maxY ?? d3.max(bars, (b) => Math.max(b.value, b.ref ?? 0)) ?? 1;
-  const y = log
-    ? d3.scaleLog().domain([1, Math.max(10, top * 1.15)]).range([h, 0]).clamp(true)
-    : d3.scaleLinear().domain([0, Math.max(1, top) * 1.08]).range([h, 0]).nice();
-  const yv = (v: number) => (log ? y(Math.max(1, v)) : y(v));
+  const y = d3.scaleLinear().domain([0, Math.max(1, top) * 1.08]).range([h, 0]).nice();
+  const yv = (v: number) => y(v);
   const fmtY = yFormat ?? ((v: number) => d3.format("~s")(v));
   const labelEvery = Math.ceil(bars.length / Math.max(1, Math.floor(w / 34)));
   return (
     <div ref={ref} className="chart">
       <svg width={w + m.left + m.right} height={height} role="group" aria-label={`${yLabel} by ${xLabel}`}>
         <g transform={`translate(${m.left},${m.top})`}>
-          <Axis scale={y as any} orient="left" ticks={log ? 4 : 5} format={log ? (v: number) => (Math.log10(v) % 1 === 0 ? d3.format('~s')(v) : '') : fmtY} grid gridSize={w} />
+          <Axis scale={y as any} orient="left" ticks={5} format={fmtY} grid gridSize={w} />
           <Axis
             scale={x as any}
             orient="bottom"

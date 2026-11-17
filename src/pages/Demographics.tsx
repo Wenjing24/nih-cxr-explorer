@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import type { PageProps } from '../App';
 import { prettyFinding, SEX_LABELS, type Dataset } from '../lib/data';
-import { anyFindingMask, filterImages, findingBit, prevalenceByAgeSex, type PrevalenceSeries, type VennUnit } from '../lib/compute';
+import { anyFindingMask, filterImages, findingBit, prevalenceByAgeSex, type CountUnit, type PrevalenceSeries } from '../lib/compute';
 import { describeFilters } from '../lib/filters';
 import { FilterPanel } from '../components/FilterPanel';
 import { Axis, AxisLabel, Card, Empty, fmt, Legend, Note, pct, Segmented, useTipHandlers, useWidth } from '../components/chart';
@@ -13,7 +13,7 @@ const SMALL_N = 30;
 
 export function DemographicsPage({ ds, filters, setFilters }: PageProps) {
   const idx = useMemo(() => filterImages(ds, filters), [ds, filters]);
-  const [unit, setUnit] = useState<VennUnit>('images');
+  const [unit, setUnit] = useState<CountUnit>('images');
   const [measure, setMeasure] = useState<Measure>('rate');
   const [bin, setBin] = useState<5 | 10>(10);
   const [sharedY, setSharedY] = useState<'shared' | 'free'>('free');
@@ -62,7 +62,7 @@ export function DemographicsPage({ ds, filters, setFilters }: PageProps) {
           actions={
             <>
               <Segmented<Measure> label="Show" value={measure} onChange={setMeasure} options={[{ value: 'rate', label: 'Prevalence %' }, { value: 'count', label: 'Count' }]} />
-              <Segmented<VennUnit> label="Unit" value={unit} onChange={setUnit} options={[{ value: 'images', label: 'Images' }, { value: 'patients', label: 'Patients' }]} />
+              <Segmented<CountUnit> label="Unit" value={unit} onChange={setUnit} options={[{ value: 'images', label: 'Images' }, { value: 'patients', label: 'Patients' }]} />
               <Segmented<'5' | '10'> label="Age bins" value={`${bin}` as '5' | '10'} onChange={(b) => setBin(+b as 5 | 10)} options={[{ value: '5', label: '5 y' }, { value: '10', label: '10 y' }]} />
               {panels.length > 1 && (
                 <Segmented label="Y axes" value={sharedY} onChange={setSharedY} options={[{ value: 'free', label: 'Per panel' }, { value: 'shared', label: 'Shared' }]} />

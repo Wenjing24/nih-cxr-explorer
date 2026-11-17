@@ -3,9 +3,10 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const ROUTES = ['overview', 'complexity', 'cooccurrence', 'demographics', 'images-per-patient', 'view-position'];
-const shots = new URL('./screenshots/', import.meta.url).pathname;
+const shots = fileURLToPath(new URL('./screenshots/', import.meta.url));
 mkdirSync(shots, { recursive: true });
 
 let server;
@@ -25,7 +26,11 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-const browser = await chromium.launch();
+const browserExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+const browser = await chromium.launch({
+  executablePath: browserExecutable,
+  args: browserExecutable ? ['--no-sandbox', '--disable-web-security'] : undefined,
+});
 try {
   for (const vp of [{ name: 'desktop', width: 1400, height: 900 }, { name: 'mobile', width: 390, height: 844 }]) {
     const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
@@ -51,14 +56,14 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const page = await ctx.newPage();
   await page.goto(`${base}#/cooccurrence`);
-  await page.waitForSelector('.venn svg');
+  await page.waitForSelector('.upset svg');
   const defaultSel = await page.locator('.finding-list label.on').allInnerTexts();
   check('default selection from Progress Book sketch', defaultSel.length === 2 && defaultSel[0].startsWith('Atelectasis'), defaultSel.join(', '));
 
   // select a third, then try a fourth (must be blocked)
   await page.getByLabel(/Effusion/).check({ force: true });
   await page.waitForTimeout(100);
-  check('3 circles drawn after selecting Effusion', (await page.locator('.venn svg > circle').count()) === 6);
+  check('7 intersection columns drawn after selecting Effusion', (await page.locator('.upset-column').count()) === 7);
   const fourth = page.locator('.finding-list label', { hasText: 'Infiltration' }).locator('input');
   check('4th finding disabled at cap of 3', await fourth.isDisabled());
   check('URL holds selected findings', page.url().includes('f=Atelectasis%2CConsolidation%2CEffusion'), page.url());
@@ -70,16 +75,16 @@ try {
     const denom = num(document.querySelector('.region-table tfoot td.num').textContent);
     return { total: rows.reduce((a, b) => a + b, 0), denom };
   });
-  check('Venn regions + none = denominator', sums.total === sums.denom && sums.denom === 112120, JSON.stringify(sums));
+  check('UpSet intersections + none = denominator', sums.total === sums.denom && sums.denom === 112120, JSON.stringify(sums));
 
-  // hover the centre of the first circle -> tooltip
-  const c = await page.locator('.venn svg > circle').first().boundingBox();
-  await page.mouse.move(c.x + c.width * 0.3, c.y + c.height * 0.5);
+  // hover the first intersection column -> tooltip
+  const c = await page.locator('.upset-column').first().boundingBox();
+  await page.mouse.move(c.x + c.width * 0.5, c.y + Math.min(50, c.height * 0.2));
   await page.waitForTimeout(100);
-  check('hovering a Venn region shows a tooltip', await page.locator('.tooltip').isVisible());
-  await page.mouse.click(c.x + c.width * 0.3, c.y + c.height * 0.5);
+  check('hovering an UpSet column shows a tooltip', await page.locator('.tooltip').isVisible());
+  await page.mouse.click(c.x + c.width * 0.5, c.y + Math.min(50, c.height * 0.2));
   check('clicking a region pins & highlights a table row', (await page.locator('.region-table tr.active').count()) === 1);
-  await page.screenshot({ path: `${shots}interaction-venn.png` });
+  await page.screenshot({ path: `${shots}interaction-upset.png` });
 
   // patient unit
   await page.getByRole('radio', { name: 'Patients' }).click();
@@ -178,16 +183,16 @@ try {
   await mp.locator('.finding-list label', { hasText: 'Edema' }).click();
   check('mobile: filter panel opens and selection works', (await mp.locator('.finding-list label.on').count()) === 2);
   await mp.goto(`${base}#/cooccurrence?f=Atelectasis,Consolidation`);
-  await mp.waitForSelector('.venn svg');
+  await mp.waitForSelector('.upset svg');
   const clipped = await mp.evaluate(() => {
-    const svg = document.querySelector('.venn svg').getBoundingClientRect();
-    return [...document.querySelectorAll('.venn .set-label, .venn .set-sub')].some((t) => {
+    const svg = document.querySelector('.upset svg').getBoundingClientRect();
+    return [...document.querySelectorAll('.upset .upset-set-label')].some((t) => {
       const r = t.getBoundingClientRect();
       return r.left < svg.left - 1 || r.right > svg.right + 1;
     });
   });
-  check('mobile: Venn set labels inside the chart', !clipped);
-  await mp.screenshot({ path: `${shots}mobile-venn.png`, fullPage: true });
+  check('mobile: UpSet set labels inside the chart', !clipped);
+  await mp.screenshot({ path: `${shots}mobile-upset.png`, fullPage: true });
   await mctx.close();
 } finally {
   await browser.close();

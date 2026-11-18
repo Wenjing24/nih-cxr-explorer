@@ -37,7 +37,8 @@ export function ComplexityPage({ ds }: { ds: Dataset }) {
         >
           <ViewLines PA={byView.PA} AP={byView.AP} />
           <p className="caption">
-            {pct(multi(byView.AP))} of AP images carry ≥2 findings vs {pct(multi(byView.PA))} of PA images.
+            {pct(multi(byView.AP))} of AP images carry ≥2 findings vs {pct(multi(byView.PA))} of PA images. Hover (or tap) the small points on the
+            right to open a magnifier with exact counts.
           </p>
         </Card>
 
@@ -65,43 +66,127 @@ function ViewLines({ PA, AP }: { PA: number[]; AP: number[] }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const tipFor = useTipHandlers();
   const [unit, setUnit] = useState<'count' | 'share'>('count');
+  // magnifier: centre k of a 3-point window, or null when hidden
+  const [zoomK, setZoomK] = useState<number | null>(null);
   const w = width - M.left - M.right;
   const h = H - M.top - M.bottom;
   const tot = { PA: d3.sum(PA), AP: d3.sum(AP) };
   const ks = d3.range(PA.length);
-  const val = (v: 'PA' | 'AP', k: number) => (unit === 'count' ? (v === 'PA' ? PA : AP)[k] : (v === 'PA' ? PA : AP)[k] / tot[v]);
+  const series = { PA, AP };
+  const val = (v: 'PA' | 'AP', k: number) => (unit === 'count' ? series[v][k] : series[v][k] / tot[v]);
   const x = d3.scalePoint<number>().domain(ks).range([0, w]).padding(0.3);
+  const step = x.step();
+  const dodge = { PA: -Math.min(5, step * 0.12), AP: Math.min(5, step * 0.12) };
   const maxV = d3.max(ks.flatMap((k) => [val('PA', k), val('AP', k)]))!;
   const y = d3.scaleLinear().domain([0, maxV * 1.08]).range([h, 0]).nice();
-  const yy = (v: number) => y(v);
   const f = unit === 'count' ? d3.format('~s') : (v: number) => pct(v, v < 0.01 ? 2 : 0);
+  const exact = (v: 'PA' | 'AP', k: number) => (unit === 'count' ? fmt(series[v][k]) : pct(val(v, k), val(v, k) < 0.001 ? 3 : val(v, k) < 0.01 ? 2 : 1));
+  // points too small to read at full scale: < 25% of the maximum
+  const zoomable = (k: number) => Math.max(val('PA', k), val('AP', k)) < maxV * 0.25;
+  const firstZoom = ks.find(zoomable) ?? ks.length;
+
+  const kAt = (px: number) => Math.max(0, Math.min(ks.length - 1, Math.round((px - x(0)!) / step)));
+  const onPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - r.left - M.left;
+    const py = e.clientY - r.top - M.top;
+    const k = kAt(px);
+    setZoomK(py >= -10 && py <= h + 20 && zoomable(k) ? k : null);
+  };
+
+  // magnifier geometry
+  let zoom: JSX.Element | null = null;
+  if (zoomK !== null && w > 0) {
+    const lo = Math.max(firstZoom, zoomK - 1);
+    const hi = Math.min(ks.length - 1, lo + 2);
+    const win = d3.range(Math.max(firstZoom, hi - 2), hi + 1);
+    const zMax = d3.max(win.flatMap((k) => [val('PA', k), val('AP', k)])) || 1;
+    const narrow = width < 420;
+    const bw = narrow ? 168 : 230;
+    const bh = narrow ? 112 : 132;
+    const bandX0 = x(win[0])! - step / 2;
+    const bandX1 = x(win[win.length - 1])! + step / 2;
+    const bandTop = y(zMax) - 8;
+    const minLeft = x(Math.min(firstZoom, ks.length - 1))! - step / 2;
+    const bx = Math.max(minLeft, Math.min(w - bw, (bandX0 + bandX1) / 2 - bw / 2));
+    const by = 0;
+    const ip = { l: 40, r: 10, t: 24, b: 30 };
+    const xi = d3.scalePoint<number>().domain(win).range([ip.l, bw - ip.r]).padding(0.45);
+    const yi = d3.scaleLinear().domain([0, zMax * 1.15]).range([bh - ip.b, ip.t]).nice(3);
+    const di = { PA: -7, AP: 7 };
+    zoom = (
+      <g className="magnifier" pointerEvents="none">
+        <rect className="mag-band" x={bandX0} y={bandTop} width={bandX1 - bandX0} height={h - bandTop + 4} />
+        <line className="mag-link" x1={bandX0} y1={bandTop} x2={bx} y2={by + bh} />
+        <line className="mag-link" x1={bandX1} y1={bandTop} x2={bx + bw} y2={by + bh} />
+        <g transform={`translate(${bx},${by})`}>
+          <rect className="mag-box" width={bw} height={bh} rx={8} />
+          <text className="mag-title" x={10} y={15}>Zoom · y-axis rescaled (0–{f(yi.domain()[1])})</text>
+          {yi.ticks(3).map((t) => (
+            <g key={t} transform={`translate(0,${yi(t)})`}>
+              <line x1={ip.l} x2={bw - ip.r} className="mag-grid" />
+              <text x={ip.l - 5} dy="0.32em" textAnchor="end" className="mag-tick">{f(t)}</text>
+            </g>
+          ))}
+          {win.map((k) => (
+            <text key={k} x={xi(k)} y={bh - 6} textAnchor="middle" className="mag-tick">{k}</text>
+          ))}
+          {(['PA', 'AP'] as const).map((v) => (
+            <g key={v}>
+              <path
+                d={d3.line<number>().x((k) => xi(k)! + di[v]).y((k) => yi(val(v, k)))(win)!}
+                fill="none"
+                stroke={VIEW_COLORS[v]}
+                strokeWidth={2}
+                strokeDasharray={v === 'AP' ? '6 3' : undefined}
+              />
+              {win.map((k) => (
+                <g key={k} transform={`translate(${xi(k)! + di[v]},${yi(val(v, k))})`}>
+                  <path d={markerPath(VIEW_SHAPES[v], 4.5)} fill="var(--surface)" stroke={VIEW_COLORS[v]} strokeWidth={2} />
+                  <text className="mag-val" x={v === 'PA' ? -6 : 6} y={v === 'PA' ? 15 : -7} textAnchor={v === 'PA' ? 'end' : 'start'} fill={VIEW_COLORS[v]}>
+                    {exact(v, k)}
+                  </text>
+                </g>
+              ))}
+            </g>
+          ))}
+        </g>
+      </g>
+    );
+  }
+
   return (
     <div ref={ref} className="chart">
       <div className="controls">
         <Segmented label="Y" value={unit} onChange={setUnit} options={[{ value: 'count', label: '# images' }, { value: 'share', label: '% within view' }]} />
         <Legend items={[{ label: 'PA (standing)', color: VIEW_COLORS.PA, swatch: 'line', marker: 'circle' }, { label: 'AP (often supine, sicker)', color: VIEW_COLORS.AP, swatch: 'line', marker: 'triangle', dashed: true }]} />
       </div>
-      <svg width={width} height={H}>
+      <svg width={width} height={H} onPointerMove={onPointer} onPointerDown={onPointer} onMouseLeave={() => setZoomK(null)} className="view-lines">
         <g transform={`translate(${M.left},${M.top})`}>
           <Axis scale={y as any} orient="left" ticks={5} grid gridSize={w} format={f as any} />
           <Axis scale={x as any} orient="bottom" transform={`translate(0,${h})`} />
+          {firstZoom < ks.length && zoomK === null && (
+            <text className="mag-hint" x={x(firstZoom)! - step / 2 + 4} y={y(maxV * 0.25) - 6}>
+              🔍 hover here to magnify {firstZoom}+ findings
+            </text>
+          )}
           {(['PA', 'AP'] as const).map((v) => (
             <g key={v}>
               <path
-                d={d3.line<number>().x((k) => x(k)!).y((k) => yy(val(v, k)))(ks)!}
+                d={d3.line<number>().x((k) => x(k)! + dodge[v]).y((k) => y(val(v, k)))(ks)!}
                 fill="none"
                 stroke={VIEW_COLORS[v]}
                 strokeWidth={2.5}
                 strokeDasharray={v === 'AP' ? '7 4' : undefined}
               />
               {ks.map((k) => {
-                const n = (v === 'PA' ? PA : AP)[k];
+                const n = series[v][k];
                 return (
                   <path
                     key={k}
                     className="dot"
                     d={markerPath(VIEW_SHAPES[v], 5)}
-                    transform={`translate(${x(k)},${yy(val(v, k))})`}
+                    transform={`translate(${x(k)! + dodge[v]},${y(val(v, k))})`}
                     fill="var(--surface)"
                     stroke={VIEW_COLORS[v]}
                     strokeWidth={2.5}
@@ -113,11 +198,13 @@ function ViewLines({ PA, AP }: { PA: number[]; AP: number[] }) {
                       </>,
                       `${v}, ${k} findings: ${n} images`,
                     )}
+                    onFocusCapture={() => setZoomK(zoomable(k) ? k : null)}
                   />
                 );
               })}
             </g>
           ))}
+          {zoom}
           <AxisLabel x={-M.left + 14} y={h / 2} rotate>{unit === 'count' ? '# images' : '% of images within view'}</AxisLabel>
           <AxisLabel x={w / 2} y={h + 38}># findings on image</AxisLabel>
         </g>

@@ -164,6 +164,15 @@ try {
     return { tri: d.filter((x) => x.endsWith('Z')).length, circ: d.filter((x) => x.includes('a')).length };
   });
   check('PA circles vs AP triangles on the complexity line chart', shapes.tri === 10 && shapes.circ === 10, JSON.stringify(shapes));
+  // magnifier: hover the k=8 point -> zoom box with exact small counts
+  const p8 = await page.evaluate(() => { const d = [...document.querySelectorAll('.view-lines path.dot')][8].getBoundingClientRect(); return { x: d.x + d.width / 2, y: d.y }; });
+  await page.mouse.move(p8.x, p8.y - 4);
+  await page.waitForTimeout(120);
+  const mag = await page.evaluate(() => [...document.querySelectorAll('.magnifier .mag-val')].map((t) => t.textContent));
+  check('hovering small points opens a magnifier with exact counts (k=7–9)', mag.join(',') === '9,0,1,7,1,1', mag.join(','));
+  await page.mouse.move(p8.x - 600, p8.y - 150);
+  await page.waitForTimeout(80);
+  check('magnifier hides away from the small points', (await page.locator('.magnifier').count()) === 0);
 
   // demographics: toggles + tooltip
   await page.goto(`${base}#/demographics?f=Effusion`);

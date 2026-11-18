@@ -1,6 +1,6 @@
 // Pure aggregation functions. Every function states its unit (images vs patients)
 // and denominator; the UI copies those definitions into chart labels.
-import type { Dataset } from './data';
+import { popcount, type Dataset } from './data';
 import { ageFilterActive, type Filters } from './filters';
 
 // ---------------------------------------------------------------- filtering
@@ -103,7 +103,7 @@ export function findingCounts(ds: Dataset, idx: ArrayLike<number>): FindingCount
   return res;
 }
 
-// ---------------------------------------------------------------- Venn / Euler
+// ---------------------------------------------------------------- exact combinations (UpSet)
 
 export type VennUnit = 'images' | 'patients';
 
@@ -119,7 +119,7 @@ export interface VennResult {
 }
 
 /**
- * Exclusive Venn region counts for up to 3 findings.
+ * Exclusive combination (UpSet intersection / Venn region) counts for 0–14 findings.
  * images:   each filtered image falls in exactly one region.
  * patients: a patient is "in" a finding if ANY of their filtered images carries it.
  */
@@ -153,6 +153,37 @@ export function vennCounts(ds: Dataset, idx: ArrayLike<number>, selection: strin
   let denominator = 0;
   for (const c of counts) denominator += c;
   return { regions, totals, none: counts[0], denominator };
+}
+
+export interface Combination {
+  /** bitmask over the selection */
+  mask: number;
+  count: number;
+  /** number of selected findings in the combination */
+  degree: number;
+}
+
+/** Non-empty exclusive combinations, largest first (ties: lower degree first). */
+export function combinations(v: VennResult): Combination[] {
+  const out: Combination[] = [];
+  v.regions.forEach((count, mask) => {
+    if (count > 0) out.push({ mask, count, degree: popcount(mask) });
+  });
+  return out.sort((a, b) => b.count - a.count || a.degree - b.degree || a.mask - b.mask);
+}
+
+/** pair[i][j] = units carrying both selection[i] and selection[j] (inclusive); pair[i][i] = set size. */
+export function pairwise(v: VennResult): number[][] {
+  const k = v.totals.length;
+  const out = Array.from({ length: k }, () => new Array<number>(k).fill(0));
+  v.regions.forEach((c, m) => {
+    if (!c) return;
+    for (let i = 0; i < k; i++) {
+      if (!(m & (1 << i))) continue;
+      for (let j = 0; j < k; j++) if (m & (1 << j)) out[i][j] += c;
+    }
+  });
+  return out;
 }
 
 // ---------------------------------------------------------------- prevalence by age & sex

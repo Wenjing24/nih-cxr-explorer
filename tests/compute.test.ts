@@ -6,10 +6,10 @@ import { resolve } from 'node:path';
 import { toDataset, type RawDataset, popcount } from '../src/lib/data';
 import {
   allImages, countPatients, filterImages, findingBit, findingCounts, imagesPerPatient,
-  imagesPerPatientCounts, overview, prevalenceByAgeSex, vennCounts, complexityByView,
+  imagesPerPatientCounts, overview, prevalenceByAgeSex, vennCounts, complexityByView, combinations, pairwise,
   complexityByAge, anyFindingMask,
 } from '../src/lib/compute';
-import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, toggleFinding, CLEARED_FILTERS } from '../src/lib/filters';
+import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, toggleFinding, CLEARED_FILTERS, MAX_FINDINGS, PAGE_DEFAULTS } from '../src/lib/filters';
 
 const raw = JSON.parse(readFileSync(resolve(__dirname, '../public/data/images.json'), 'utf8')) as RawDataset;
 const ref = JSON.parse(readFileSync(resolve(__dirname, 'reference.json'), 'utf8'));
@@ -203,14 +203,51 @@ describe('shared filters', () => {
     expect(r.median).toBeNull();
     expect(r.patients).toBe(0);
   });
-  it('finding selection is capped at 3 and round-trips through the URL', () => {
+  it('all 14 findings can be selected and the selection round-trips through the URL', () => {
+    expect(MAX_FINDINGS).toBe(14);
     let s = CLEARED_FILTERS;
-    for (const n of ['Hernia', 'Edema', 'Mass', 'Nodule']) s = toggleFinding(s, n);
-    expect(s.findings).toEqual(['Hernia', 'Edema', 'Mass']);
+    for (const n of ds.findings) s = toggleFinding(s, n);
+    expect(s.findings).toEqual([...ds.findings]);
+    s = toggleFinding(s, 'Hernia');
+    expect(s.findings).toHaveLength(13);
     s = { ...s, sex: 'M', view: 'PA', ageMin: 30, ageMax: 60 };
     expect(filtersFromQuery(filtersToQuery(s), ds.findings)).toEqual(s);
     expect(filtersFromQuery('f=Bogus,Hernia,Hernia&age=90-10', ds.findings)).toEqual({
       ...DEFAULT_FILTERS, findings: ['Hernia'], ageMin: 10, ageMax: 90,
     });
+  });
+  it('each page parses the URL against its own defaults', () => {
+    expect(filtersFromQuery('sex=F', ds.findings, PAGE_DEFAULTS.cooccurrence).findings).toEqual(PAGE_DEFAULTS.cooccurrence.findings);
+    expect(filtersFromQuery('sex=F', ds.findings, PAGE_DEFAULTS.demographics).findings).toEqual(['Atelectasis', 'Consolidation']);
+  });
+});
+
+describe('UpSet: exact combinations of all 14 findings (vs pandas value_counts)', () => {
+  const U = ref.upset14;
+  const sel = U.selection as string[];
+  const toMap = (obj: Record<string, number>) => refRegions(obj, sel);
+  for (const unit of ['images', 'patients'] as const) {
+    it(`${unit}: every non-empty combination matches`, () => {
+      const v = vennCounts(ds, all, sel, unit);
+      const got = new Map(combinations(v).map((c) => [c.mask, c.count]));
+      expect(got).toEqual(toMap(U[unit]));
+      expect(v.none).toBe(U[unit].__none__);
+      const sum = combinations(v).reduce((a, c) => a + c.count, 0);
+      expect(sum + v.none).toBe(unit === 'images' ? 112120 : 30805);
+    });
+  }
+  it('combinations are sorted by size and carry the right degree', () => {
+    const c = combinations(vennCounts(ds, all, sel, 'images'));
+    for (let i = 1; i < c.length; i++) expect(c[i - 1].count).toBeGreaterThanOrEqual(c[i].count);
+    expect(c.every((x) => x.degree === popcount(x.mask) && x.degree >= 1)).toBe(true);
+  });
+  it('pairwise co-occurrence matches the pandas matrix', () => {
+    const p = pairwise(vennCounts(ds, all, sel, 'images'));
+    sel.forEach((a, i) => sel.forEach((b, j) => expect(p[i][j]).toBe(U.pairsImages[a][b])));
+  });
+  it('set totals equal the sum of their combinations', () => {
+    const v = vennCounts(ds, all, sel, 'images');
+    const c = combinations(v);
+    sel.forEach((_, i) => expect(c.filter((x) => x.mask & (1 << i)).reduce((a, x) => a + x.count, 0)).toBe(v.totals[i]));
   });
 });

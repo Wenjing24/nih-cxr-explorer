@@ -125,6 +125,21 @@ def venn_regions(d: pd.DataFrame, sel: list[str], unit: str) -> dict:
     return res
 
 
+def exact_combos(d: pd.DataFrame, sel: list[str], unit: str) -> dict:
+    """UpSet reference via a different route than venn_regions: label each row with
+    its exact set of selected findings and count with value_counts."""
+    if unit == "patients":
+        d = d.groupby("patient")[sel].any()
+    key = d[sel].apply(lambda r: "+".join(sorted(f for f in sel if r[f])) or "__none__", axis=1)
+    return {k: int(v) for k, v in key.value_counts().items()}
+
+
+def pair_counts(d: pd.DataFrame, sel: list[str]) -> dict:
+    m = d[sel].astype(int)
+    co = m.T @ m  # co-occurrence matrix, diagonal = set sizes
+    return {a: {b: int(co.loc[a, b]) for b in sel} for a in sel}
+
+
 def ipp_hist(d: pd.DataFrame, finding: str | None) -> list[int]:
     per_patient = d.groupby("patient").agg(n=("image", "size"), **({"has": (finding, "any")} if finding else {}))
     if finding:
@@ -157,6 +172,12 @@ def build_reference(df: pd.DataFrame) -> dict:
         "images": venn_regions(df, sel, "images"),
         "patients": venn_regions(df, sel, "patients"),
         "pairImages": venn_regions(df, ["Cardiomegaly", "Edema"], "images"),
+    }
+    ref["upset14"] = {
+        "selection": FINDINGS,
+        "images": exact_combos(df, FINDINGS, "images"),
+        "patients": exact_combos(df, FINDINGS, "patients"),
+        "pairsImages": pair_counts(df, FINDINGS),
     }
 
     # Prevalence of Effusion by 10-year age bin and sex (images)

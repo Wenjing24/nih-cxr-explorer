@@ -51,40 +51,49 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const page = await ctx.newPage();
   await page.goto(`${base}#/cooccurrence`);
-  await page.waitForSelector('.venn svg');
+  await page.waitForSelector('.upset svg');
   const defaultSel = await page.locator('.finding-list label.on').allInnerTexts();
-  check('default selection from Progress Book sketch', defaultSel.length === 2 && defaultSel[0].startsWith('Atelectasis'), defaultSel.join(', '));
+  check('co-occurrence default = 5 most common findings', defaultSel.length === 5 && defaultSel[0].startsWith('Infiltration'), defaultSel.map((t) => t.split('\n')[0]).join(', '));
+  check('UpSet draws one matrix row per selected finding', (await page.locator('.upset-set').count()) === 5);
 
-  // select a third, then try a fourth (must be blocked)
-  await page.getByLabel(/Effusion/).check({ force: true });
-  await page.waitForTimeout(100);
-  check('3 circles drawn after selecting Effusion', (await page.locator('.venn svg > circle').count()) === 6);
-  const fourth = page.locator('.finding-list label', { hasText: 'Infiltration' }).locator('input');
-  check('4th finding disabled at cap of 3', await fourth.isDisabled());
-  check('URL holds selected findings', page.url().includes('f=Atelectasis%2CConsolidation%2CEffusion'), page.url());
+  // no cap: select all 14
+  await page.getByRole('button', { name: 'Select all 14' }).click();
+  await page.waitForTimeout(150);
+  check('all 14 findings selectable', (await page.locator('.finding-list label.on').count()) === 14 && (await page.locator('.upset-set').count()) === 14);
+  check('URL holds selected findings', /f=Infiltration%2CEffusion%2CAtelectasis%2CNodule%2CMass%2C/.test(page.url()), page.url().slice(0, 120));
 
-  // region table sums to denominator
+  // combinations + none = denominator (show all columns)
+  await page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: 'All', exact: true }).click();
+  await page.waitForTimeout(200);
   const sums = await page.evaluate(() => {
-    const num = (s) => +s.replace(/[^\d]/g, '');
-    const rows = [...document.querySelectorAll('.region-table tbody tr')].map((tr) => num(tr.children[1].textContent));
-    const denom = num(document.querySelector('.region-table tfoot td.num').textContent);
-    return { total: rows.reduce((a, b) => a + b, 0), denom };
+    const cols = [...document.querySelectorAll('.upset-col')].map((g) => +g.getAttribute('data-count'));
+    const none = +document.querySelector('[data-testid=none-count]').textContent.replace(/[^\d]/g, '');
+    const denom = +document.querySelector('.upset svg').getAttribute('data-denominator');
+    return { cols: cols.length, total: cols.reduce((a, b) => a + b, 0) + none, denom };
   });
-  check('Venn regions + none = denominator', sums.total === sums.denom && sums.denom === 112120, JSON.stringify(sums));
+  check('UpSet: all 800 combinations + none = 112,120 images (pandas)', sums.cols === 800 && sums.total === sums.denom && sums.denom === 112120, JSON.stringify(sums));
+  await page.getByRole('radio', { name: 'Top 15' }).click();
+  check('Top 15 limits the columns', (await page.locator('.upset-col').count()) === 15);
 
-  // hover the centre of the first circle -> tooltip
-  const c = await page.locator('.venn svg > circle').first().boundingBox();
-  await page.mouse.move(c.x + c.width * 0.3, c.y + c.height * 0.5);
+  // hover a column -> tooltip; click -> pinned details
+  const col = page.locator('.upset-col').first();
+  const cb = await col.locator('.upset-bar').boundingBox();
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
   await page.waitForTimeout(100);
-  check('hovering a Venn region shows a tooltip', await page.locator('.tooltip').isVisible());
-  await page.mouse.click(c.x + c.width * 0.3, c.y + c.height * 0.5);
-  check('clicking a region pins & highlights a table row', (await page.locator('.region-table tr.active').count()) === 1);
-  await page.screenshot({ path: `${shots}interaction-venn.png` });
+  const tipText = (await page.locator('.tooltip').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check('hovering an UpSet column shows a tooltip', /exactly this combination/.test(tipText), tipText);
+  await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+  const detail = (await page.locator('[data-testid=combo-detail]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check('clicking a column pins its details', (await page.locator('.upset-col.pinned').count()) === 1 && /Infiltration only.*9,547 images/.test(detail), detail.slice(0, 80));
+  // click a set name -> conditional panel
+  await page.locator('.upset-set', { hasText: 'Effusion' }).click();
+  check('clicking a finding name updates the conditional panel', /Given Effusion/.test(await page.locator('[data-testid=conditional]').innerText()));
+  await page.screenshot({ path: `${shots}interaction-upset.png`, fullPage: true });
 
   // patient unit
   await page.getByRole('radio', { name: 'Patients' }).click();
-  const denomP = await page.locator('.region-table tfoot td.num').first().innerText();
-  check('patient unit denominator = 30,805', denomP === '30,805', denomP);
+  const denomP = await page.locator('.upset svg').getAttribute('data-denominator');
+  check('patient unit denominator = 30,805', denomP === '30805', denomP);
 
   // filters: female + age 20-39, AP
   await page.getByRole('radio', { name: 'Female' }).click();
@@ -95,24 +104,39 @@ try {
   const summary = await page.locator('.filter-summary').innerText();
   check('filter summary F/AP/20–39 = 4,850 images (pandas)', summary.includes('4,850'), summary.replace(/\s+/g, ' '));
 
-  // navigate: filters must persist across task pages
-  for (const [label, route] of [['Findings by age', 'demographics'], ['Images per patient', 'images-per-patient'], ['View position', 'view-position']]) {
+  // independent filters: other task pages keep their own defaults
+  for (const [label, route] of [['Findings by age', 'demographics'], ['Images per patient', 'images-per-patient']]) {
     await page.locator('.tabs a', { hasText: label }).click();
     await page.waitForSelector('.page h2');
     const sel = await page.locator('.finding-list label.on').count();
     const fem = await page.getByRole('radio', { name: 'Female' }).getAttribute('aria-checked');
     const age = await page.locator('.age-row input').nth(0).inputValue();
-    check(`filters preserved on ${route}`, sel === 3 && fem === 'true' && age === '20', `sel=${sel} female=${fem} ageMin=${age}`);
-    await page.screenshot({ path: `${shots}filtered-${route}.png`, fullPage: true });
+    check(`${route} has its own independent filters`, sel === 2 && fem === 'false' && age === '0', `sel=${sel} female=${fem} ageMin=${age}`);
   }
-  // view page ignores view filter: n for Effusion should equal F/20-39 all views
-  const viewDisabled = await page.evaluate(() => [...document.querySelectorAll('.filters fieldset')].some((f) => f.disabled && f.textContent.includes('View position')));
-  check('view filter disabled on AP/PA page', viewDisabled);
+  await page.getByRole('radio', { name: 'Male', exact: true }).click();
+  await page.locator('.tabs a', { hasText: 'Finding co-occurrence' }).click();
+  await page.waitForSelector('.upset svg');
+  {
+    const fem = await page.getByRole('radio', { name: 'Female' }).getAttribute('aria-checked');
+    const age = await page.locator('.age-row input').nth(0).inputValue();
+    const sel = await page.locator('.finding-list label.on').count();
+    check('co-occurrence filters kept after visiting other pages', fem === 'true' && age === '20' && sel === 14, `female=${fem} age=${age} sel=${sel}`);
+  }
+  await page.locator('.tabs a', { hasText: 'Images per patient' }).click();
+  await page.waitForSelector('.page h2');
+  check('images-per-patient kept its own Male filter', (await page.getByRole('radio', { name: 'Male', exact: true }).getAttribute('aria-checked')) === 'true');
+
+  // view position page: no filters at all
+  await page.locator('.tabs a', { hasText: 'View position' }).click();
+  await page.waitForSelector('.page h2');
+  check('AP/PA page has no filter panel', (await page.locator('.filters').count()) === 0);
+  check('AP/PA page shows 14 findings + No Finding + all images', (await page.locator('.row-label').count()) === 16);
 
   // reload keeps state from URL
+  await page.goto(`${base}#/cooccurrence?f=Edema,Hernia&sex=F`);
   await page.reload();
   await page.waitForSelector('.page h2');
-  check('reload restores filters from URL', (await page.locator('.finding-list label.on').count()) === 3);
+  check('reload restores filters from URL', (await page.locator('.finding-list label.on').count()) === 2 && (await page.getByRole('radio', { name: 'Female' }).getAttribute('aria-checked')) === 'true');
 
   // empty results
   await page.goto(`${base}#/cooccurrence?f=Hernia&sex=F&view=PA&age=100-100`);
@@ -120,13 +144,26 @@ try {
   check('empty filter result shows message', await page.getByText('No images match the current filters').isVisible());
   await page.goto(`${base}#/cooccurrence?f=`);
   await page.waitForSelector('.page h2');
-  check('no findings selected shows prompt', await page.getByText('Select 1–3 findings to compare').isVisible());
+  check('no findings selected shows prompt', await page.getByText('Select findings to compare').isVisible());
   await page.getByRole('button', { name: /Cardiomegaly · Effusion · Edema/ }).click();
   check('suggestion chip selects findings', (await page.locator('.finding-list label.on').count()) === 3);
 
   // clear filters
   await page.getByRole('button', { name: 'Clear filters' }).click();
   check('clear filters resets selection', (await page.locator('.finding-list label.on').count()) === 0);
+
+  // linear only + marker shapes
+  await page.goto(`${base}#/overview`);
+  await page.waitForSelector('.page h2');
+  check('overview: no log/linear toggle', (await page.getByRole('radio', { name: 'Log' }).count()) === 0);
+  await page.goto(`${base}#/complexity`);
+  await page.waitForSelector('.page h2');
+  check('complexity: no log/linear toggle', (await page.getByRole('radio', { name: 'Log' }).count()) === 0);
+  const shapes = await page.evaluate(() => {
+    const d = [...document.querySelectorAll('path.dot')].map((p) => p.getAttribute('d'));
+    return { tri: d.filter((x) => x.endsWith('Z')).length, circ: d.filter((x) => x.includes('a')).length };
+  });
+  check('PA circles vs AP triangles on the complexity line chart', shapes.tri === 10 && shapes.circ === 10, JSON.stringify(shapes));
 
   // demographics: toggles + tooltip
   await page.goto(`${base}#/demographics?f=Effusion`);
@@ -136,14 +173,15 @@ try {
   const box = await page.locator('.panel svg').first().boundingBox();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
   await page.waitForTimeout(100);
-  const tipText = (await page.locator('.tooltip').innerText().catch(() => '')).replace(/\s+/g, ' ');
-  check('demographics hover shows male & female values', /Male/.test(tipText) && /Female/.test(tipText), tipText);
+  const tipText2 = (await page.locator('.tooltip').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check('demographics hover shows male & female values', /Male/.test(tipText2) && /Female/.test(tipText2), tipText2);
+  await page.getByRole('button', { name: 'Select all 14' }).click();
+  await page.waitForTimeout(200);
+  check('demographics: all 14 findings -> 14 panels', (await page.locator('.panel').count()) === 14);
 
   // view position: all findings + sort
-  await page.goto(`${base}#/view-position?f=`);
+  await page.goto(`${base}#/view-position`);
   await page.waitForSelector('.page h2');
-  const rows = await page.locator('.row-label').count();
-  check('AP/PA page with no selection lists 14 findings + No Finding + overall', rows === 16, `${rows} rows`);
   await page.getByRole('radio', { name: 'A–Z' }).click();
   const first = await page.locator('.row-label').first().textContent();
   check('A–Z sort', first.includes('Atelectasis'), first);
@@ -165,7 +203,7 @@ try {
   // ------------------------------------------------------------ mobile interactions
   const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const mp = await mctx.newPage();
-  await mp.goto(`${base}#/view-position?f=Hernia`);
+  await mp.goto(`${base}#/images-per-patient?f=Hernia`);
   await mp.waitForSelector('.page h2');
   await mp.waitForTimeout(400);
   const navOk = await mp.evaluate(() => {
@@ -177,17 +215,16 @@ try {
   await mp.getByRole('button', { name: 'Edit filters' }).click();
   await mp.locator('.finding-list label', { hasText: 'Edema' }).click();
   check('mobile: filter panel opens and selection works', (await mp.locator('.finding-list label.on').count()) === 2);
-  await mp.goto(`${base}#/cooccurrence?f=Atelectasis,Consolidation`);
-  await mp.waitForSelector('.venn svg');
-  const clipped = await mp.evaluate(() => {
-    const svg = document.querySelector('.venn svg').getBoundingClientRect();
-    return [...document.querySelectorAll('.venn .set-label, .venn .set-sub')].some((t) => {
-      const r = t.getBoundingClientRect();
-      return r.left < svg.left - 1 || r.right > svg.right + 1;
-    });
+  await mp.goto(`${base}#/cooccurrence?f=${'Infiltration,Effusion,Atelectasis,Nodule,Mass,Pneumothorax,Consolidation,Pleural_Thickening,Cardiomegaly,Emphysema,Edema,Fibrosis,Pneumonia,Hernia'}`);
+  await mp.waitForSelector('.upset svg');
+  await mp.waitForTimeout(300);
+  const fits = await mp.evaluate(() => {
+    const box = document.querySelector('.upset').getBoundingClientRect();
+    const svg = document.querySelector('.upset svg').getBoundingClientRect();
+    return { box: Math.round(box.width), svg: Math.round(svg.width) };
   });
-  check('mobile: Venn set labels inside the chart', !clipped);
-  await mp.screenshot({ path: `${shots}mobile-venn.png`, fullPage: true });
+  check('mobile: 14-finding UpSet (top 15) fits the screen', fits.svg <= fits.box + 1, JSON.stringify(fits));
+  await mp.screenshot({ path: `${shots}mobile-upset.png`, fullPage: true });
   await mctx.close();
 } finally {
   await browser.close();

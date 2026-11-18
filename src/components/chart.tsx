@@ -1,5 +1,6 @@
 // Shared chart primitives: responsive sizing, D3 axes, tooltip, legend, empty state.
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { markerPath } from '../theme';
 import * as d3 from 'd3';
 
 // ------------------------------------------------------------ responsive width
@@ -110,14 +111,15 @@ export function useTipHandlers() {
 }
 
 // ------------------------------------------------------------ small UI bits
-export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean; swatch?: 'line' | 'box' }[] }) {
+export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean; swatch?: 'line' | 'box'; marker?: 'circle' | 'triangle' }[] }) {
   return (
     <ul className="legend" aria-label="Legend">
       {items.map((it) => (
         <li key={it.label}>
           {it.swatch === 'line' ? (
-            <svg width="22" height="10" aria-hidden>
+            <svg width="22" height="12" aria-hidden style={{ overflow: 'visible' }}>
               <line x1="1" x2="21" y1="5" y2="5" stroke={it.color} strokeWidth="2.5" strokeDasharray={it.dashed ? '4 3' : undefined} />
+              {it.marker && <path d={markerPath(it.marker, 3.6)} transform="translate(11,5)" fill="var(--surface)" stroke={it.color} strokeWidth="2" />}
             </svg>
           ) : (
             <span className="swatch" style={{ background: it.color }} />

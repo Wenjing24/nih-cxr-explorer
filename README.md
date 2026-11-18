@@ -4,14 +4,16 @@ An interactive web prototype for exploring the **NIH ChestX-ray14** metadata (`D
 
 | # | Page | What it shows | Unit |
 |---|------|---------------|------|
-| 1 | Overview | Patients by recorded gender, patients by age, patients by number of images (log/linear), images by view position, how often each finding occurs | patients / images (labelled on each chart) |
-| 2 | Variables vs. complexity | Number of findings per image by view (PA/AP lines), age × complexity (100% stacked), mean findings by age, images per patient by age (colour = mean findings) | images / patients |
-| 3 | Finding co-occurrence | Interactive area-proportional Euler/Venn diagram for 1–3 findings, a region table and conditional rates | images **or** patients (toggle) |
+| 1 | Overview | Patients by recorded gender, patients by age, patients by number of images (linear scale), images by view position, how often each finding occurs | patients / images (labelled on each chart) |
+| 2 | Variables vs. complexity | Number of findings per image by view (PA = solid line with circles, AP = dashed line with triangles), age × complexity (100% stacked), mean findings by age, images per patient by age (colour = mean findings) | images / patients |
+| 3 | Finding co-occurrence | Interactive **UpSet plot** for 1–14 findings: exact-combination bars, per-finding totals, pinnable combination details, and a “given finding X” conditional bar chart | images **or** patients (toggle) |
 | 4 | Findings by age & gender | Prevalence (or count) by 5- or 10-year age bin, male (solid) vs female (dashed), one panel per finding | % / # of images **or** patients |
 | 5 | Images per patient | Histogram of images per patient for patients with each finding, with an all-patient reference | patients |
-| 6 | View position (AP/PA) | 100% stacked AP/PA bars per finding, with [n] image counts and the overall AP share | % of images |
+| 6 | View position (AP/PA) | 100% stacked AP/PA bars for all 14 findings + No Finding, with [n] image counts and the overall AP share; full dataset, no filters | % of images |
 
-Pages 3–6 share one filter state: up to 3 findings, recorded gender, view position and an age range. The state is kept when you switch pages and is written to the URL, so a reload or a shared link restores it. Page 6 ignores the view-position filter, since applying it would make every bar a single colour.
+Pages 3, 4 and 5 each have their **own independent filters** (any of the 14 findings, recorded gender, view position, age range). Changing a filter on one page never affects another, and each page remembers its settings while you switch pages. The active page’s filters are written to the URL, so a reload or a shared link restores them. Page 6 has no filters.
+
+Colour: AP images come from sicker (often supine/portable, inpatient) patients, so AP is drawn in a warm red-orange and PA in a calm slate blue. The pair is colour-blind safe, and line charts also use different marker shapes.
 
 ## Data handling
 
@@ -36,9 +38,9 @@ npm run build             # static site in dist/
 ## Tests
 
 ```bash
-npm test                  # 49 unit tests: TypeScript aggregations vs. independent pandas results
+npm test                  # 49 unit tests: TypeScript aggregations (incl. all 800 UpSet combinations) vs. independent pandas results
 npx playwright install chromium
-npm run build && npm run e2e   # 54 browser checks on desktop + phone widths, screenshots in tests/screenshots/
+npm run build && npm run e2e   # 61 browser checks on desktop + phone widths, screenshots in tests/screenshots/
 ```
 
 ## Deploying to GitHub Pages

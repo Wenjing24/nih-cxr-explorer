@@ -1,367 +1,453 @@
-import { useId, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import * as d3 from 'd3';
 import type { PageProps } from '../App';
 import { prettyFinding } from '../lib/data';
-import { filterImages, vennCounts, type VennUnit } from '../lib/compute';
-import { describeFilters, toggleFinding } from '../lib/filters';
-import { fitCircles, layoutCircles, regionAt, regionLabelPoints, type Circle } from '../lib/venn';
+import { combinations, filterImages, pairwise, vennCounts, type Combination, type VennResult, type VennUnit } from '../lib/compute';
+import { describeFilters, TOP5 } from '../lib/filters';
 import { FilterPanel } from '../components/FilterPanel';
 import { Card, Empty, fmt, Note, pct, Segmented, useTooltip, useWidth } from '../components/chart';
-import { SET_COLORS } from '../theme';
+import { findingColor } from '../theme';
 
-const SUGGESTED: string[][] = [
-  ['Effusion', 'Atelectasis', 'Infiltration'],
-  ['Cardiomegaly', 'Effusion', 'Edema'],
-  ['Mass', 'Nodule'],
-];
+type Sort = 'size' | 'degree';
+type TopN = '15' | '30' | 'all';
 
 export function CooccurrencePage({ ds, filters, setFilters }: PageProps) {
   const idx = useMemo(() => filterImages(ds, filters), [ds, filters]);
   const [unit, setUnit] = useState<VennUnit>('images');
+  const [sort, setSort] = useState<Sort>('size');
+  const [topN, setTopN] = useState<TopN>('15');
   const [pinned, setPinned] = useState<number | null>(null);
-  const [hover, setHover] = useState<number | null>(null);
+  const [focusSet, setFocusSet] = useState<string | null>(null);
   const sel = filters.findings;
   const v = useMemo(() => vennCounts(ds, idx, sel, unit), [ds, idx, sel, unit]);
-  const active = hover ?? pinned;
+  const combos = useMemo(() => combinations(v), [v]);
+  const pairs = useMemo(() => pairwise(v), [v]);
   const unitWord = unit === 'images' ? 'images' : 'patients';
-  const regionName = (m: number) => {
-    const inn = sel.filter((_, i) => m & (1 << i)).map(prettyFinding);
-    const out = sel.filter((_, i) => !(m & (1 << i))).map(prettyFinding);
-    return `${inn.join(' + ')}${out.length ? ` only (not ${out.join(', ')})` : ''}`;
-  };
+  const withAny = v.denominator - v.none;
 
-  // region list sorted by size
-  const regionRows = [...v.regions.entries()].sort((a, b) => b[1] - a[1]);
-  const totalWithAny = v.denominator - v.none;
+  // rows (sets) ordered by size, largest on top
+  const rowOrder = useMemo(() => d3.range(sel.length).sort((a, b) => v.totals[b] - v.totals[a] || a - b), [sel, v]);
+
+  const shown = useMemo(() => {
+    const limit = topN === 'all' ? Infinity : +topN;
+    const top = combos.slice(0, limit);
+    if (sort === 'degree') top.sort((a, b) => a.degree - b.degree || b.count - a.count);
+    return top;
+  }, [combos, topN, sort]);
+  const hiddenCount = combos.length - shown.length;
+  const hiddenUnits = d3.sum(combos.slice(shown.length), (c) => c.count);
+
+  const pinnedValid = pinned !== null && (v.regions.get(pinned) ?? 0) > 0 ? pinned : null;
+  const focus = focusSet && sel.includes(focusSet) ? focusSet : sel.length ? sel[rowOrder[0]] : null;
+
+  const comboName = (m: number) => {
+    const inn = sel.filter((_, i) => m & (1 << i)).map(prettyFinding);
+    return inn.length === 1 ? `${inn[0]} only` : inn.join(' + ');
+  };
 
   let body;
   if (sel.length === 0) {
     body = (
-      <Empty title="Select 1–3 findings to compare">
-        Use the checkboxes in the filter panel, or start from a suggestion:
+      <Empty title="Select findings to compare">
+        Check findings in the filter panel, or start from a suggestion:
         <span className="chip-row">
-          {SUGGESTED.map((s) => (
-            <button key={s.join()} type="button" className="chip" onClick={() => setFilters({ ...filters, findings: s })}>
-              {s.map(prettyFinding).join(' · ')}
-            </button>
-          ))}
+          <button type="button" className="chip" onClick={() => setFilters({ ...filters, findings: TOP5 })}>5 most common</button>
+          <button type="button" className="chip" onClick={() => setFilters({ ...filters, findings: [...ds.findings] })}>All 14 findings</button>
+          <button type="button" className="chip" onClick={() => setFilters({ ...filters, findings: ['Cardiomegaly', 'Effusion', 'Edema'] })}>
+            Cardiomegaly · Effusion · Edema
+          </button>
         </span>
       </Empty>
     );
   } else if (v.denominator === 0) {
     body = <Empty title="No images match the current filters">Widen the age range or reset gender/view filters.</Empty>;
+  } else if (combos.length === 0) {
+    body = (
+      <Empty title={`No filtered ${unitWord} carry any selected finding`}>
+        All {fmt(v.denominator)} filtered {unitWord} have none of: {sel.map(prettyFinding).join(', ')}.
+      </Empty>
+    );
   } else {
     body = (
-      <div className="venn-layout">
-        <VennDiagram
+      <>
+        <UpSet
           sel={sel}
+          findings={ds.findings}
           v={v}
+          shown={shown}
+          rowOrder={rowOrder}
           unitWord={unitWord}
-          active={active}
-          setHover={setHover}
-          onPick={(m) => setPinned(pinned === m ? null : m)}
-          regionName={regionName}
+          pinned={pinnedValid}
+          onPin={(m) => setPinned(pinnedValid === m ? null : m)}
+          focus={focus}
+          onFocusSet={setFocusSet}
+          comboName={comboName}
         />
-        <div className="venn-side">
-          <h4>Regions <span className="muted">(exclusive, {unitWord})</span></h4>
-          <table className="region-table">
-            <thead>
-              <tr>
-                <th scope="col">Combination</th>
-                <th scope="col" className="num">#</th>
-                <th scope="col" className="num" title={`% of all ${fmt(v.denominator)} filtered ${unitWord}`}>% of all</th>
-              </tr>
-            </thead>
-            <tbody>
-              {regionRows.map(([m, c]) => (
-                <tr
-                  key={m}
-                  className={active === m ? 'active' : ''}
-                  onMouseEnter={() => setHover(m)}
-                  onMouseLeave={() => setHover(null)}
-                  onClick={() => setPinned(pinned === m ? null : m)}
-                  tabIndex={0}
-                  onFocus={() => setHover(m)}
-                  onBlur={() => setHover(null)}
-                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setPinned(pinned === m ? null : m))}
-                >
-                  <td>
-                    <span className="combo-dots">
-                      {sel.map((s, i) => (
-                        <span key={s} className={`cdot ${m & (1 << i) ? 'in' : ''}`} style={{ ['--c' as any]: SET_COLORS[i] }} />
-                      ))}
-                    </span>
-                    {regionName(m)}
-                  </td>
-                  <td className="num">{fmt(c)}</td>
-                  <td className="num">{pct(c / v.denominator, 2)}</td>
-                </tr>
-              ))}
-              <tr className="none-row">
-                <td>None of the selected findings</td>
-                <td className="num">{fmt(v.none)}</td>
-                <td className="num">{pct(v.none / v.denominator, 1)}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Denominator: all filtered {unitWord}</td>
-                <td className="num">{fmt(v.denominator)}</td>
-                <td className="num">100%</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {sel.length >= 2 && (
-            <>
-              <h4>Conditional co-occurrence</h4>
-              <ul className="cond-list">
-                {sel.flatMap((a, i) =>
-                  sel.map((b, j) => {
-                    if (i === j) return null;
-                    let both = 0;
-                    v.regions.forEach((c, m) => {
-                      if (m & (1 << i) && m & (1 << j)) both += c;
-                    });
-                    const base = v.totals[i];
-                    return (
-                      <li key={`${a}-${b}`}>
-                        Of {fmt(base)} {unitWord} with <b style={{ color: SET_COLORS[i] }}>{prettyFinding(a)}</b>,{' '}
-                        <b>{pct(base ? both / base : null)}</b> also have <b style={{ color: SET_COLORS[j] }}>{prettyFinding(b)}</b>
-                      </li>
-                    );
-                  }),
-                )}
-              </ul>
-            </>
+        {topN !== '15' && <p className="hint small-only">Scroll the plot sideways to see all columns.</p>}
+        <p className="caption upset-caption">
+          Showing <b>{shown.length}</b> of {fmt(combos.length)} non-empty combinations
+          {hiddenCount > 0 && <> ({fmt(hiddenCount)} smaller ones hidden, covering {fmt(hiddenUnits)} {unitWord})</>}.{' '}
+          <span data-testid="none-count">{fmt(v.none)}</span> filtered {unitWord} ({pct(v.none / v.denominator)}) have <i>none</i> of the selected
+          findings and are not drawn.
+        </p>
+        <div className="upset-details">
+          <ComboDetail
+            mask={pinnedValid}
+            v={v}
+            sel={sel}
+            unitWord={unitWord}
+            withAny={withAny}
+            comboName={comboName}
+            onClear={() => setPinned(null)}
+          />
+          {sel.length >= 2 && focus && (
+            <Conditional
+              focus={focus}
+              sel={sel}
+              findings={ds.findings}
+              pairs={pairs}
+              unitWord={unitWord}
+              onFocus={setFocusSet}
+            />
           )}
         </div>
-      </div>
+      </>
     );
   }
 
   return (
     <div className="page with-filters">
-      <FilterPanel ds={ds} filters={filters} setFilters={setFilters} idx={idx} findingsHint="Each checked finding becomes a circle (max 3)." />
+      <FilterPanel ds={ds} filters={filters} setFilters={setFilters} idx={idx} findingsHint="Each checked finding becomes a row of the UpSet matrix." />
       <div className="page-body">
         <div className="page-head">
           <div>
             <h2>Finding co-occurrence</h2>
             <p className="lede">
-              Which findings appear together? Circle area is proportional to the number of {unitWord} carrying each finding; overlaps show {unitWord}{' '}
-              with several findings. Hover or click a region (or table row) to highlight it.
+              Which findings appear together? Each column of the UpSet plot is one <b>exact combination</b> of the selected findings (filled dots);
+              the bar above it counts the {unitWord} with exactly that combination. Bars on the left give each finding’s total. Hover or click a
+              column to see details; click a finding name to see what co-occurs with it.
             </p>
           </div>
         </div>
         <Card
-          title={sel.length ? sel.map(prettyFinding).join(' · ') : 'Co-occurrence'}
+          title="Exact combinations of the selected findings (UpSet plot)"
           subtitle={
             <>
               Unit: <b>{unitWord}</b>
-              {unit === 'patients' && ' — a patient counts toward a finding if any of their filtered images carries it'}. Denominator:{' '}
-              {fmt(v.denominator)} filtered {unitWord} ({describeFilters(filters)}).
-              {sel.length > 0 && v.denominator > 0 && <> {fmt(totalWithAny)} ({pct(totalWithAny / v.denominator)}) have ≥1 selected finding.</>}
+              {unit === 'patients' && ' — a patient carries a finding if any of their filtered images does; their combination is the union over those images'}.
+              Denominator: {fmt(v.denominator)} filtered {unitWord} ({describeFilters(filters)})
+              {sel.length > 0 && v.denominator > 0 && <>; {fmt(withAny)} ({pct(withAny / v.denominator)}) have ≥1 selected finding</>}. Columns are
+              mutually exclusive; findings that are not selected are ignored.
             </>
           }
           actions={
-            <Segmented<VennUnit>
-              label="Count"
-              value={unit}
-              onChange={(u) => { setUnit(u); setPinned(null); }}
-              options={[{ value: 'images', label: 'Images' }, { value: 'patients', label: 'Patients' }]}
-            />
+            <>
+              <Segmented<VennUnit>
+                label="Count"
+                value={unit}
+                onChange={(u) => { setUnit(u); setPinned(null); }}
+                options={[{ value: 'images', label: 'Images' }, { value: 'patients', label: 'Patients' }]}
+              />
+              <Segmented<TopN> label="Show" value={topN} onChange={setTopN} options={[{ value: '15', label: 'Top 15' }, { value: '30', label: 'Top 30' }, { value: 'all', label: 'All' }]} />
+              <Segmented<Sort> label="Order" value={sort} onChange={setSort} options={[{ value: 'size', label: 'Size' }, { value: 'degree', label: '# findings' }]} />
+            </>
           }
         >
           {body}
         </Card>
-        {sel.length > 0 && (
-          <Note>
-            Circle areas and two-way overlaps are drawn to scale; with three findings the overlaps can only be approximated by circles — always
-            read the exact counts in the labels and table. Selected findings can be removed with the × chips:{' '}
-            {sel.map((s, i) => (
-              <button key={s} type="button" className="chip small" style={{ borderColor: SET_COLORS[i] }} onClick={() => setFilters(toggleFinding(filters, s))}>
-                {prettyFinding(s)} ×
-              </button>
-            ))}
-          </Note>
-        )}
+        <Note>
+          Columns are <b>exclusive</b>: an image with Effusion + Infiltration counts only in the “Effusion + Infiltration” column, not in “Effusion
+          only”. Adding or removing a selected finding therefore changes the columns. A finding’s total (left bars) equals the sum of every column
+          whose dot for that finding is filled.
+        </Note>
       </div>
     </div>
   );
 }
 
-function VennDiagram({
-  sel, v, unitWord, active, setHover, onPick, regionName,
+// ------------------------------------------------------------------ UpSet chart
+function UpSet({
+  sel, findings, v, shown, rowOrder, unitWord, pinned, onPin, focus, onFocusSet, comboName,
 }: {
   sel: string[];
-  v: ReturnType<typeof vennCounts>;
+  findings: readonly string[];
+  v: VennResult;
+  shown: Combination[];
+  rowOrder: number[];
   unitWord: string;
-  active: number | null;
-  setHover: (m: number | null) => void;
-  onPick: (m: number) => void;
-  regionName: (m: number) => string;
+  pinned: number | null;
+  onPin: (m: number) => void;
+  focus: string | null;
+  onFocusSet: (f: string) => void;
+  comboName: (m: number) => string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const tip = useTooltip();
-  const uid = useId().replace(/:/g, '');
-  const W = Math.max(260, width);
-  const H = Math.min(440, Math.max(300, W * 0.72));
-  const pad = W < 420 ? 40 : 64;
-  const circles = useMemo(() => {
-    const k = sel.length;
-    const pairs = Array.from({ length: k }, (_, i) =>
-      Array.from({ length: k }, (_, j) => {
-        if (i === j) return v.totals[i];
-        let s = 0;
-        v.regions.forEach((c, m) => {
-          if (m & (1 << i) && m & (1 << j)) s += c;
-        });
-        return s;
-      }),
-    );
-    return fitCircles(layoutCircles(v.totals, pairs), W, H, pad, Math.max(pad, 50));
-  }, [sel, v, W, H]);
-  const labels = useMemo(() => regionLabelPoints(circles), [circles]);
+  const [hoverCol, setHoverCol] = useState<number | null>(null);
+  const [hoverRow, setHoverRow] = useState<number | null>(null);
+  const narrow = width < 560;
+  const labelW = narrow ? 88 : 128;
+  const setW = narrow ? 46 : 120;
+  const left = labelW + setW + 8;
+  const right = narrow ? 4 : 12;
+  const rowH = narrow ? 20 : 24;
+  const barsH = narrow ? 150 : 200;
+  const avail = Math.max(100, width - left - right);
+  const colW = Math.max(narrow ? 12 : 16, Math.min(56, avail / Math.max(1, shown.length)));
+  const rotateLabels = colW < 30;
+  const top = rotateLabels ? 62 : 36;
+  const plotW = colW * shown.length;
+  const svgW = left + plotW + right;
+  const matrixTop = top + barsH + 12;
+  const svgH = matrixTop + rowH * sel.length + 34;
+  const maxCount = d3.max(shown, (c) => c.count) ?? 1;
+  const y = d3.scaleLinear().domain([0, maxCount]).range([barsH, 0]).nice();
+  const setX = d3.scaleLinear().domain([0, d3.max(v.totals) || 1]).range([0, setW - (narrow ? 4 : 44)]);
+  const dotR = Math.min(colW * 0.3, rowH * 0.3, 6.5);
+  const active = hoverCol ?? pinned;
+  const rowY = (s: number) => matrixTop + rowOrder.indexOf(s) * rowH + rowH / 2;
+  const fmtShort = (n: number) => (n >= 10000 ? d3.format('.3~s')(n) : fmt(n));
 
-  const setLabels = useMemo(() => placeSetLabels(circles, sel.map((f, i) => [prettyFinding(f), `${fmt(v.totals[i])} ${unitWord}`]), W, H), [circles, sel, v, unitWord, W, H]);
-
-  const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const m = regionAt(circles, e.clientX - rect.left, e.clientY - rect.top);
-    if (!m) {
-      setHover(null);
-      tip.hide();
-      return;
-    }
-    setHover(m);
-    const c = v.regions.get(m) ?? 0;
-    tip.show(e, (
-      <>
-        <b>{regionName(m)}</b>
-        <div>{fmt(c)} {unitWord}</div>
-        <div>{pct(c / v.denominator, 2)} of all filtered {unitWord}</div>
-        <div className="muted">Click to pin</div>
-      </>
-    ));
-  };
+  const comboTip = (c: Combination) => (
+    <>
+      <b>{comboName(c.mask)}</b>
+      <div>{fmt(c.count)} {unitWord} with exactly this combination</div>
+      <div>{pct(c.count / v.denominator, 2)} of all {fmt(v.denominator)} filtered {unitWord}</div>
+      {c.degree > 1 && <div className="muted">{c.degree} selected findings together</div>}
+      <div className="muted">{pinned === c.mask ? 'Click to unpin' : 'Click to pin'}</div>
+    </>
+  );
 
   return (
-    <div ref={ref} className="chart venn">
+    <div ref={ref} className="chart upset" style={{ overflowX: svgW > width + 1 ? 'auto' : 'visible' }}>
       <svg
-        width={W}
-        height={H}
-        onMouseMove={handleMove}
-        onMouseLeave={() => { setHover(null); tip.hide(); }}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const m = regionAt(circles, e.clientX - rect.left, e.clientY - rect.top);
-          if (m) onPick(m);
-        }}
-        role="img"
-        aria-label={`Venn diagram of ${sel.join(', ')}`}
+        width={svgW}
+        height={svgH}
+        role="group"
+        aria-label={`UpSet plot of ${sel.length} findings`}
+        data-denominator={v.denominator}
+        onMouseLeave={() => { setHoverCol(null); setHoverRow(null); tip.hide(); }}
       >
-        <defs>
-          {circles.map((c, i) => (
-            <clipPath key={i} id={`${uid}-clip-${i}`}>
-              <circle cx={c.x} cy={c.y} r={c.r} />
-            </clipPath>
+        {/* alternating row stripes */}
+        {rowOrder.map((s, r) => (
+          <rect
+            key={`stripe${s}`}
+            x={0}
+            y={matrixTop + r * rowH}
+            width={svgW}
+            height={rowH}
+            className={`upset-stripe ${r % 2 ? 'odd' : ''} ${hoverRow === s || focus === sel[s] ? 'hl' : ''}`}
+          />
+        ))}
+
+        {/* intersection-size axis */}
+        <g transform={`translate(${left},${top})`}>
+          {y.ticks(4).map((t) => (
+            <g key={t} transform={`translate(0,${y(t)})`}>
+              <line x1={0} x2={plotW} className="grid-line" />
+              <text x={-6} dy="0.32em" textAnchor="end" className="tick-text">{fmtShort(t)}</text>
+            </g>
           ))}
-          {active !== null && (
-            <mask id={`${uid}-mask`}>
-              <rect width={W} height={H} fill="white" />
-              {circles.map((c, i) => (!(active & (1 << i)) ? <circle key={i} cx={c.x} cy={c.y} r={c.r} fill="black" /> : null))}
-            </mask>
-          )}
-        </defs>
-        {circles.map((c, i) => (
-          <circle key={i} cx={c.x} cy={c.y} r={c.r} fill={SET_COLORS[i]} fillOpacity={active === null ? 0.22 : 0.1} stroke={SET_COLORS[i]} strokeWidth={2} />
-        ))}
-        {active !== null &&
-          (() => {
-            const inc = circles.map((_, i) => i).filter((i) => active & (1 << i));
-            let node: JSX.Element = <rect width={W} height={H} fill="var(--highlight)" fillOpacity={0.55} mask={`url(#${uid}-mask)`} />;
-            for (const i of inc) node = <g clipPath={`url(#${uid}-clip-${i})`}>{node}</g>;
-            return <g pointerEvents="none">{node}</g>;
-          })()}
-        {circles.map((c, i) => (
-          <circle key={`o${i}`} cx={c.x} cy={c.y} r={c.r} fill="none" stroke={SET_COLORS[i]} strokeWidth={active !== null && active & (1 << i) ? 3 : 2} pointerEvents="none" />
-        ))}
-        {[...labels.entries()].map(([m, p]) => {
-          const c = v.regions.get(m) ?? 0;
-          if (p.depth < 9) return null;
+          <text className="axis-label" x={-left + 4} y={-top + 14} textAnchor="start">
+            # {unitWord} with exactly this combination
+          </text>
+        </g>
+
+        {/* columns */}
+        {shown.map((c, ci) => {
+          const x0 = left + ci * colW;
+          const cx = x0 + colW / 2;
+          const inc = rowOrder.filter((s) => c.mask & (1 << s));
+          const ys = inc.map(rowY);
+          const isActive = active === c.mask;
+          const rowHit = hoverRow !== null && !!(c.mask & (1 << hoverRow));
+          const bw = Math.max(4, colW * 0.68);
           return (
-            <g key={m} pointerEvents="none" className="venn-label">
-              <text x={p.x} y={p.y} textAnchor="middle" dy={p.depth > 22 ? '-0.1em' : '0.35em'} className="venn-count">{fmt(c)}</text>
-              {p.depth > 22 && (
-                <text x={p.x} y={p.y} textAnchor="middle" dy="1.15em" className="venn-pct">{pct(c / v.denominator, c / v.denominator < 0.01 ? 2 : 1)}</text>
+            <g
+              key={c.mask}
+              className={`upset-col ${isActive ? 'active' : ''} ${pinned === c.mask ? 'pinned' : ''}`}
+              data-count={c.count}
+              tabIndex={0}
+              role="button"
+              aria-pressed={pinned === c.mask}
+              aria-label={`${comboName(c.mask)}: ${c.count} ${unitWord}`}
+              onMouseMove={(e) => { setHoverCol(c.mask); tip.show(e, comboTip(c)); }}
+              onMouseLeave={() => { setHoverCol(null); tip.hide(); }}
+              onFocus={(e) => {
+                setHoverCol(c.mask);
+                const r = e.currentTarget.getBoundingClientRect();
+                tip.show({ clientX: r.right, clientY: r.top + 40 }, comboTip(c));
+              }}
+              onBlur={() => { setHoverCol(null); tip.hide(); }}
+              onClick={() => onPin(c.mask)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPin(c.mask))}
+            >
+              <rect className="upset-hit" x={x0} y={top - 4} width={colW} height={svgH - top - 30} />
+              <rect
+                className="upset-bar"
+                x={cx - bw / 2}
+                y={top + y(c.count)}
+                width={bw}
+                height={Math.max(1, barsH - y(c.count))}
+                fill={rowHit ? findingColor(findings, sel[hoverRow!]) : undefined}
+              />
+              {rotateLabels ? (
+                <text className="upset-count" transform={`translate(${cx + 3.5},${top + y(c.count) - 4}) rotate(-90)`} textAnchor="start">
+                  {fmtShort(c.count)}
+                </text>
+              ) : (
+                <text className="upset-count" x={cx} y={top + y(c.count) - 5} textAnchor="middle">{fmtShort(c.count)}</text>
+              )}
+              {ys.length > 1 && <line className="upset-link" x1={cx} x2={cx} y1={Math.min(...ys)} y2={Math.max(...ys)} />}
+              {rowOrder.map((s) => (
+                <circle key={s} cx={cx} cy={rowY(s)} r={dotR} className={c.mask & (1 << s) ? 'upset-dot on' : 'upset-dot'} />
+              ))}
+            </g>
+          );
+        })}
+
+        {/* set rows: name + set-size bar (grows leftward toward the name) */}
+        {rowOrder.map((s) => {
+          const f = sel[s];
+          const yc = rowY(s);
+          const bwid = setX(v.totals[s]);
+          const color = findingColor(findings, f);
+          const setTip = (
+            <>
+              <b>{prettyFinding(f)}</b>
+              <div>{fmt(v.totals[s])} {unitWord} with this finding (any combination)</div>
+              <div>{pct(v.totals[s] / v.denominator, 2)} of all filtered {unitWord}</div>
+              <div className="muted">Click to see what co-occurs with it</div>
+            </>
+          );
+          return (
+            <g
+              key={f}
+              className={`upset-set ${focus === f ? 'focused' : ''}`}
+              tabIndex={0}
+              role="button"
+              aria-label={`${prettyFinding(f)}: ${v.totals[s]} ${unitWord}. Show co-occurrence.`}
+              onMouseMove={(e) => { setHoverRow(s); tip.show(e, setTip); }}
+              onMouseLeave={() => { setHoverRow(null); tip.hide(); }}
+              onFocus={() => setHoverRow(s)}
+              onBlur={() => setHoverRow(null)}
+              onClick={() => onFocusSet(f)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onFocusSet(f))}
+            >
+              <rect className="upset-hit" x={0} y={yc - rowH / 2} width={left - 4} height={rowH} />
+              <circle cx={8} cy={yc} r={4.5} fill={color} />
+              <text className="row-label upset-name" x={18} y={yc} dy="0.35em">{prettyFinding(f)}</text>
+              <rect className="upset-setbar" x={left - 6 - bwid} y={yc - rowH * 0.32} width={Math.max(1, bwid)} height={rowH * 0.64} fill={color} />
+              {!narrow && (
+                <text className="upset-setcount" x={left - 10 - bwid} y={yc} dy="0.35em" textAnchor="end">{fmtShort(v.totals[s])}</text>
               )}
             </g>
           );
         })}
-        {setLabels.map((L, i) => (
-          <g key={`l${i}`} pointerEvents="none">
-            <text x={L.x} y={L.y} textAnchor={L.anchor} className="set-label" fill={SET_COLORS[i]}>{prettyFinding(sel[i])}</text>
-            <text x={L.x} y={L.y + 15} textAnchor={L.anchor} className="set-sub">{fmt(v.totals[i])} {unitWord}</text>
-          </g>
-        ))}
+        <text className="axis-label" x={labelW + setW / 2} y={matrixTop + rowH * sel.length + 22} textAnchor="middle">
+          {narrow ? `# ${unitWord}` : `Total ${unitWord} per finding`}
+        </text>
+        <text className="axis-label" x={left + plotW / 2} y={matrixTop + rowH * sel.length + 22} textAnchor="middle">
+          Combination (filled = present)
+        </text>
       </svg>
     </div>
   );
 }
 
-type Box = { x0: number; y0: number; x1: number; y1: number };
+// ------------------------------------------------------------------ side panels
+function ComboDetail({
+  mask, v, sel, unitWord, withAny, comboName, onClear,
+}: {
+  mask: number | null;
+  v: VennResult;
+  sel: string[];
+  unitWord: string;
+  withAny: number;
+  comboName: (m: number) => string;
+  onClear: () => void;
+}) {
+  if (mask === null) {
+    return (
+      <div className="detail-box muted-box">
+        <h4>Combination details</h4>
+        <p className="muted">Click a column (or focus it and press Enter) to pin its exact counts here.</p>
+      </div>
+    );
+  }
+  const c = v.regions.get(mask) ?? 0;
+  const inn = sel.filter((_, i) => mask & (1 << i));
+  const out = sel.filter((_, i) => !(mask & (1 << i)));
+  return (
+    <div className="detail-box" data-testid="combo-detail">
+      <div className="detail-head">
+        <h4>{comboName(mask)}</h4>
+        <button type="button" className="link" onClick={onClear}>Unpin</button>
+      </div>
+      <p className="big-number">{fmt(c)} <span>{unitWord}</span></p>
+      <ul className="detail-list">
+        <li><b>{pct(c / v.denominator, 2)}</b> of all {fmt(v.denominator)} filtered {unitWord}</li>
+        <li><b>{pct(withAny ? c / withAny : null, 1)}</b> of the {fmt(withAny)} with ≥1 selected finding</li>
+        {inn.map((f) => {
+          const t = v.totals[sel.indexOf(f)];
+          return <li key={f}><b>{pct(t ? c / t : null, 1)}</b> of the {fmt(t)} with {prettyFinding(f)}</li>;
+        })}
+      </ul>
+      <p className="hint">
+        Has: {inn.map(prettyFinding).join(', ')}.{out.length > 0 && <> Does <i>not</i> have: {out.map(prettyFinding).join(', ')}.</>}
+      </p>
+    </div>
+  );
+}
 
-/**
- * Put each set's name + total just outside its circle: try angles around the
- * preferred direction (away from the group centre) and keep the first spot
- * that stays inside the SVG, clear of every circle and of earlier labels.
- */
-function placeSetLabels(circles: Circle[], texts: string[][], W: number, H: number) {
-  const cx = circles.reduce((a, c) => a + c.x, 0) / circles.length;
-  const cy = circles.reduce((a, c) => a + c.y, 0) / circles.length;
-  const placed: Box[] = [];
-  const hitsCircle = (b: Box) =>
-    circles.some((c) => {
-      const nx = Math.max(b.x0, Math.min(c.x, b.x1));
-      const ny = Math.max(b.y0, Math.min(c.y, b.y1));
-      return (nx - c.x) ** 2 + (ny - c.y) ** 2 < (c.r + 3) ** 2;
-    });
-  const overlaps = (b: Box) => placed.some((p) => b.x0 < p.x1 && b.x1 > p.x0 && b.y0 < p.y1 && b.y1 > p.y0);
-  return circles.map((c, i) => {
-    const [name, sub] = texts[i];
-    const bw = Math.max(name.length * 8.2, sub.length * 6.6);
-    const bh = 32;
-    let pref: number;
-    if (circles.length === 1) pref = -Math.PI / 2;
-    else if (circles.length === 2) pref = i === 0 ? (-3 * Math.PI) / 4 : -Math.PI / 4;
-    else pref = Math.atan2(c.y - cy, c.x - cx);
-    const order = [0];
-    for (let k = 1; k <= 8; k++) order.push(k, -k);
-    let best: { x: number; y: number; anchor: 'start' | 'middle' | 'end'; box: Box } | null = null;
-    const tries: [number, number][] = [];
-    for (const off of [10, 26, 44]) for (const k of order) tries.push([k, off]);
-    for (const [k, off] of tries) {
-      const a = pref + (k * Math.PI) / 8;
-      const cos = Math.cos(a);
-      const sin = Math.sin(a);
-      const px = c.x + (c.r + off) * cos;
-      const py = c.y + (c.r + off) * sin;
-      const anchor = cos > 0.35 ? 'start' : cos < -0.35 ? 'end' : 'middle';
-      const x0 = anchor === 'start' ? px : anchor === 'end' ? px - bw : px - bw / 2;
-      const y0 = sin < -0.35 ? py - bh : sin > 0.35 ? py : py - bh / 2;
-      const box = { x0, y0, x1: x0 + bw, y1: y0 + bh };
-      const cand = { x: px, y: y0 + 13, anchor: anchor as 'start' | 'middle' | 'end', box };
-      if (!best) best = cand;
-      if (box.x0 < 2 || box.x1 > W - 2 || box.y0 < 2 || box.y1 > H - 2) continue;
-      if (hitsCircle(box) || overlaps(box)) continue;
-      best = cand;
-      break;
-    }
-    // keep the chosen label inside the SVG even when no candidate was fully clear
-    const b = best!;
-    const dx = b.box.x1 > W - 2 ? W - 2 - b.box.x1 : b.box.x0 < 2 ? 2 - b.box.x0 : 0;
-    const dy = b.box.y1 > H - 2 ? H - 2 - b.box.y1 : b.box.y0 < 2 ? 2 - b.box.y0 : 0;
-    const out = { ...b, x: b.x + dx, y: b.y + dy, box: { x0: b.box.x0 + dx, x1: b.box.x1 + dx, y0: b.box.y0 + dy, y1: b.box.y1 + dy } };
-    placed.push(out.box);
-    return out;
-  });
+function Conditional({
+  focus, sel, findings, pairs, unitWord, onFocus,
+}: {
+  focus: string;
+  sel: string[];
+  findings: readonly string[];
+  pairs: number[][];
+  unitWord: string;
+  onFocus: (f: string) => void;
+}) {
+  const i = sel.indexOf(focus);
+  const base = pairs[i][i];
+  const rows = sel
+    .map((f, j) => ({ f, j, both: pairs[i][j] }))
+    .filter((r) => r.j !== i)
+    .sort((a, b) => b.both - a.both);
+  return (
+    <div className="detail-box" data-testid="conditional">
+      <div className="detail-head">
+        <h4>
+          Given <span style={{ color: findingColor(findings, focus) }}>{prettyFinding(focus)}</span>, how often is each other finding present?
+        </h4>
+      </div>
+      <p className="hint">
+        Denominator: the {fmt(base)} {unitWord} with {prettyFinding(focus)} (inclusive of any combination). Click a finding name in the plot to change.
+      </p>
+      {base === 0 ? (
+        <p className="muted">No filtered {unitWord} have {prettyFinding(focus)}.</p>
+      ) : (
+        <ul className="cond-bars">
+          {rows.map((r) => {
+            const share = r.both / base;
+            return (
+              <li key={r.f}>
+                <button type="button" className="cond-name link" onClick={() => onFocus(r.f)} title={`Show co-occurrence given ${prettyFinding(r.f)}`}>
+                  {prettyFinding(r.f)}
+                </button>
+                <span className="cond-track" aria-hidden>
+                  <span className="cond-fill" style={{ width: `${share * 100}%`, background: findingColor(findings, r.f) }} />
+                </span>
+                <span className="cond-val">
+                  {pct(share)} <span className="muted">({fmt(r.both)})</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }

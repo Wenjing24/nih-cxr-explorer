@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadDataset, type Dataset } from './lib/data';
-import { filtersFromQuery, filtersToQuery, type Filters } from './lib/filters';
+import { FILTER_PAGES, PAGE_DEFAULTS, filtersFromQuery, filtersToQuery, type FilterPage, type Filters } from './lib/filters';
 import { TooltipProvider } from './components/chart';
 import { OverviewPage } from './pages/Overview';
 import { ComplexityPage } from './pages/Complexity';
@@ -15,9 +15,11 @@ export const ROUTES = [
   { id: 'cooccurrence', label: 'Finding co-occurrence', task: true },
   { id: 'demographics', label: 'Findings by age & gender', task: true },
   { id: 'images-per-patient', label: 'Images per patient', task: true },
-  { id: 'view-position', label: 'View position (AP/PA)', task: true },
+  { id: 'view-position', label: 'View position (AP/PA)', task: false },
 ] as const;
 export type RouteId = (typeof ROUTES)[number]['id'];
+const isFilterPage = (r: string): r is FilterPage => (FILTER_PAGES as string[]).includes(r);
+type FilterState = Record<FilterPage, Filters>;
 
 function parseHash(): { route: RouteId; query: string } {
   const h = window.location.hash.replace(/^#\/?/, '');
@@ -36,30 +38,40 @@ export default function App({ dataUrl = 'data/images.json', preloaded }: { dataU
   const [ds, setDs] = useState<Dataset | null>(preloaded ?? null);
   const [error, setError] = useState<string | null>(null);
   const [route, setRoute] = useState<RouteId>(() => parseHash().route);
-  const [filters, setFiltersState] = useState<Filters | null>(null);
+  // independent filters per task page; the active page's filters live in the URL
+  const [allFilters, setAllFilters] = useState<FilterState | null>(null);
 
   useEffect(() => {
     if (preloaded) return;
     loadDataset(dataUrl).then(setDs).catch((e) => setError(String(e.message ?? e)));
   }, [dataUrl, preloaded]);
 
-  // initialise filters from the URL once findings are known
+  // initialise from the URL once findings are known
   useEffect(() => {
-    if (ds && !filters) setFiltersState(filtersFromQuery(parseHash().query, ds.findings));
-  }, [ds, filters]);
+    if (!ds || allFilters) return;
+    const { route: r, query } = parseHash();
+    const init = { ...PAGE_DEFAULTS };
+    if (isFilterPage(r) && query) init[r] = filtersFromQuery(query, ds.findings, PAGE_DEFAULTS[r]);
+    setAllFilters(init);
+  }, [ds, allFilters]);
+
+  const hrefFor = useCallback(
+    (r: RouteId) => (isFilterPage(r) && allFilters ? `#/${r}?${filtersToQuery(allFilters[r])}` : `#/${r}`),
+    [allFilters],
+  );
 
   // keep the URL in sync (shareable links, survives reload)
   useEffect(() => {
-    if (!filters) return;
-    const next = `#/${route}?${filtersToQuery(filters)}`;
+    if (!allFilters) return;
+    const next = hrefFor(route);
     if (window.location.hash !== next) window.history.replaceState(null, '', next);
-  }, [route, filters]);
+  }, [route, allFilters, hrefFor]);
 
   useEffect(() => {
     const onHash = () => {
       const { route: r, query } = parseHash();
       setRoute(r);
-      if (ds && query) setFiltersState(filtersFromQuery(query, ds.findings));
+      if (ds && query && isFilterPage(r)) setAllFilters((prev) => prev && { ...prev, [r]: filtersFromQuery(query, ds.findings, PAGE_DEFAULTS[r]) });
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
@@ -77,20 +89,23 @@ export default function App({ dataUrl = 'data/images.json', preloaded }: { dataU
     window.scrollTo({ top: 0 });
   }, []);
 
-  const setFilters = useCallback((f: Filters) => setFiltersState(f), []);
+  const setFilters = useCallback(
+    (f: Filters) => setAllFilters((prev) => (prev && isFilterPage(route) ? { ...prev, [route]: f } : prev)),
+    [route],
+  );
 
   const page = useMemo(() => {
-    if (!ds || !filters) return null;
-    const props = { ds, filters, setFilters };
+    if (!ds || !allFilters) return null;
+    const props = { ds, filters: isFilterPage(route) ? allFilters[route] : PAGE_DEFAULTS.cooccurrence, setFilters };
     switch (route) {
       case 'overview': return <OverviewPage ds={ds} />;
       case 'complexity': return <ComplexityPage ds={ds} />;
       case 'cooccurrence': return <CooccurrencePage {...props} />;
       case 'demographics': return <DemographicsPage {...props} />;
       case 'images-per-patient': return <ImagesPerPatientPage {...props} />;
-      case 'view-position': return <ViewPositionPage {...props} />;
+      case 'view-position': return <ViewPositionPage ds={ds} />;
     }
-  }, [ds, filters, route, setFilters]);
+  }, [ds, allFilters, route, setFilters]);
 
   return (
     <TooltipProvider>
@@ -109,7 +124,7 @@ export default function App({ dataUrl = 'data/images.json', preloaded }: { dataU
             {ROUTES.map((r, i) => (
               <a
                 key={r.id}
-                href={`#/${r.id}${filters ? `?${filtersToQuery(filters)}` : ''}`}
+                href={hrefFor(r.id)}
                 className={route === r.id ? 'active' : ''}
                 aria-current={route === r.id ? 'page' : undefined}
                 onClick={(e) => {
@@ -119,7 +134,7 @@ export default function App({ dataUrl = 'data/images.json', preloaded }: { dataU
               >
                 <span className="tab-num">{i + 1}</span>
                 {r.label}
-                {r.task && <span className="tab-badge" title="Uses the shared filters">filters</span>}
+                {r.task && <span className="tab-badge" title="This page has its own, independent filters">filters</span>}
               </a>
             ))}
           </nav>

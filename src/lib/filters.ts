@@ -1,10 +1,11 @@
-// Shared filter state for the four task pages.
+// Filter state. Each task page (co-occurrence, demographics, images per patient) keeps its OWN
+// independent copy; the active page's copy is mirrored in the URL.
 
 export type SexFilter = 'all' | 'M' | 'F';
 export type ViewFilter = 'all' | 'PA' | 'AP';
 
 export interface Filters {
-  /** selected findings (0–3), by name */
+  /** selected findings (0–14), by name */
   findings: string[];
   sex: SexFilter;
   view: ViewFilter;
@@ -12,7 +13,8 @@ export interface Filters {
   ageMax: number;
 }
 
-export const MAX_FINDINGS = 3;
+/** all 14 findings may be selected */
+export const MAX_FINDINGS = 14;
 export const AGE_LO = 0;
 export const AGE_HI = 100;
 
@@ -22,6 +24,17 @@ export const DEFAULT_FILTERS: Filters = {
   view: 'all',
   ageMin: AGE_LO,
   ageMax: AGE_HI,
+};
+
+/** five most frequent findings: a readable starting point for the UpSet plot */
+export const TOP5 = ['Infiltration', 'Effusion', 'Atelectasis', 'Nodule', 'Mass'];
+
+export type FilterPage = 'cooccurrence' | 'demographics' | 'images-per-patient';
+export const FILTER_PAGES: FilterPage[] = ['cooccurrence', 'demographics', 'images-per-patient'];
+export const PAGE_DEFAULTS: Record<FilterPage, Filters> = {
+  cooccurrence: { ...DEFAULT_FILTERS, findings: TOP5 },
+  demographics: DEFAULT_FILTERS,
+  'images-per-patient': DEFAULT_FILTERS,
 };
 
 export const CLEARED_FILTERS: Filters = { ...DEFAULT_FILTERS, findings: [] };
@@ -46,9 +59,9 @@ export function filtersToQuery(f: Filters): string {
   return p.toString();
 }
 
-export function filtersFromQuery(q: string, validFindings: readonly string[]): Filters {
+export function filtersFromQuery(q: string, validFindings: readonly string[], defaults: Filters = DEFAULT_FILTERS): Filters {
   const p = new URLSearchParams(q);
-  const out: Filters = { ...DEFAULT_FILTERS };
+  const out: Filters = { ...defaults };
   if (p.has('f')) {
     out.findings = (p.get('f') || '')
       .split(',')

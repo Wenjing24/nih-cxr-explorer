@@ -6,7 +6,7 @@ import { anyFindingMask, filterImages, findingBit, prevalenceByAgeSex, type Prev
 import { describeFilters } from '../lib/filters';
 import { FilterPanel } from '../components/FilterPanel';
 import { Axis, AxisLabel, Card, Empty, fmt, Legend, Note, pct, Segmented, useTipHandlers, useWidth } from '../components/chart';
-import { SET_COLORS, SEX_COLORS } from '../theme';
+import { findingColor, SEX_COLORS } from '../theme';
 
 type Measure = 'rate' | 'count';
 const SMALL_N = 30;
@@ -18,7 +18,7 @@ export function DemographicsPage({ ds, filters, setFilters }: PageProps) {
   const [bin, setBin] = useState<5 | 10>(10);
   const [sharedY, setSharedY] = useState<'shared' | 'free'>('free');
   const panels = filters.findings.length
-    ? filters.findings.map((f, i) => ({ key: f, title: prettyFinding(f), mask: findingBit(ds, f), color: SET_COLORS[i] }))
+    ? filters.findings.map((f) => ({ key: f, title: prettyFinding(f), mask: findingBit(ds, f), color: findingColor(ds.findings, f) }))
     : [{ key: 'any', title: 'Any finding (≥1 of 14)', mask: anyFindingMask(ds), color: 'var(--ink)' }];
   const results = useMemo(
     () => panels.map((p) => ({ ...p, ...prevalenceByAgeSex(ds, idx, p.mask, unit, bin) })),
@@ -37,7 +37,7 @@ export function DemographicsPage({ ds, filters, setFilters }: PageProps) {
         filters={filters}
         setFilters={setFilters}
         idx={idx}
-        findingsHint="One panel per finding (max 3). None checked = any abnormal finding."
+        findingsHint="One panel per checked finding. None checked = any abnormal finding."
       />
       <div className="page-body">
         <div className="page-head">
@@ -79,7 +79,7 @@ export function DemographicsPage({ ds, filters, setFilters }: PageProps) {
           {idx.length === 0 ? (
             <Empty title="No images match the current filters">Widen the age range or reset the gender/view filters.</Empty>
           ) : (
-            <div className={`multiples n${results.length}`}>
+            <div className={`multiples n${Math.min(results.length, 5)}`}>
               {results.map((r) => (
                 <AgePanel
                   key={r.key}

@@ -6,7 +6,7 @@ import {
 } from '../lib/filters';
 import { countPatients, findingCounts } from '../lib/compute';
 import { fmt, Segmented } from './chart';
-import { SET_COLORS } from '../theme';
+import { findingColor } from '../theme';
 
 export function FilterPanel({
   ds, filters, setFilters, idx, ignoreView, ignoreSex, findingsHint,
@@ -34,9 +34,9 @@ export function FilterPanel({
   };
 
   return (
-    <aside className={`filters ${open ? 'open' : 'closed'}`} aria-label="Shared filters">
+    <aside className={`filters ${open ? 'open' : 'closed'}`} aria-label="Filters for this page">
       <div className="filters-head">
-        <h2>Filters</h2>
+        <h2>Filters <span className="muted small">this page only</span></h2>
         <button type="button" className="link" onClick={() => setFilters(CLEARED_FILTERS)} disabled={!dirty}>
           Clear filters
         </button>
@@ -50,7 +50,13 @@ export function FilterPanel({
         <span className="muted"> (of {fmt(ds.n)} images · {fmt(ds.nPatients)} patients)</span>
         {!open && (
           <span className="closed-summary">
-            {filters.findings.length ? filters.findings.map(prettyFinding).join(', ') : 'No findings selected'}
+            {filters.findings.length === 0
+              ? 'No findings selected'
+              : filters.findings.length === ds.findings.length
+                ? 'All 14 findings'
+                : filters.findings.length > 4
+                  ? `${filters.findings.length} findings`
+                  : filters.findings.map(prettyFinding).join(', ')}
             {filters.sex !== 'all' && ` · ${filters.sex === 'M' ? 'Male' : 'Female'}`}
             {filters.view !== 'all' && !ignoreView && ` · ${filters.view}`}
             {ageFilterActive(filters) && ` · age ${filters.ageMin}–${filters.ageMax}`}
@@ -64,17 +70,25 @@ export function FilterPanel({
             Findings <span className="muted">({filters.findings.length}/{MAX_FINDINGS} selected)</span>
           </legend>
           {findingsHint && <p className="hint">{findingsHint}</p>}
+          <div className="select-all">
+            <button type="button" className="link" disabled={filters.findings.length === ds.findings.length} onClick={() => setFilters({ ...filters, findings: [...ds.findings] })}>
+              Select all 14
+            </button>
+            <button type="button" className="link" disabled={filters.findings.length === 0} onClick={() => setFilters({ ...filters, findings: [] })}>
+              Select none
+            </button>
+          </div>
           <ul className="finding-list">
             {ds.findings.map((f) => {
               const on = filters.findings.includes(f);
-              const order = filters.findings.indexOf(f);
+              const col = findingColor(ds.findings, f);
               const c = counts.find((x) => x.finding === f)!;
               const disabled = !on && full;
               return (
                 <li key={f}>
                   <label className={`${on ? 'on' : ''} ${disabled ? 'disabled' : ''}`} title={disabled ? `Up to ${MAX_FINDINGS} findings — deselect one first` : undefined}>
                     <input type="checkbox" checked={on} disabled={disabled} onChange={() => setFilters(toggleFinding(filters, f))} />
-                    <span className="dot" style={{ background: on ? SET_COLORS[order] : 'transparent', borderColor: on ? SET_COLORS[order] : undefined }} aria-hidden />
+                    <span className="dot" style={{ background: on ? col : 'transparent', borderColor: on ? col : undefined }} aria-hidden />
                     <span className="fname">{prettyFinding(f)}</span>
                     <span className="fcount" title="Images with this finding under current filters">{fmt(c.images)}</span>
                   </label>
@@ -82,7 +96,6 @@ export function FilterPanel({
               );
             })}
           </ul>
-          {full && <p className="hint">Maximum of {MAX_FINDINGS} reached — uncheck one to choose another.</p>}
         </fieldset>
 
         <fieldset disabled={ignoreSex}>

@@ -9,7 +9,6 @@ import { VIEW_COLORS } from '../theme';
 export function OverviewPage({ ds }: { ds: Dataset }) {
   const o = useMemo(() => overview(ds), [ds]);
   const fc = useMemo(() => findingCounts(ds, allImages(ds)), [ds]);
-  const [ippScale, setIppScale] = useState<'log' | 'linear'>('log');
   const [ippRange, setIppRange] = useState<'20' | 'all'>('20');
   const noFinding = fc.at(-1)!;
 
@@ -90,14 +89,9 @@ export function OverviewPage({ ds }: { ds: Dataset }) {
         <Card
           title="Patients by number of images"
           subtitle="Unit: patients. Most patients have one image; a long tail has dozens (max 184)."
-          actions={
-            <>
-              <Segmented label="Y scale" value={ippScale} onChange={setIppScale} options={[{ value: 'log', label: 'Log' }, { value: 'linear', label: 'Linear' }]} />
-              <Segmented label="X range" value={ippRange} onChange={setIppRange} options={[{ value: '20', label: '1–20+' }, { value: 'all', label: 'All' }]} />
-            </>
-          }
+          actions={<Segmented label="X range" value={ippRange} onChange={setIppRange} options={[{ value: '20', label: '1–20+' }, { value: 'all', label: 'All' }]} />}
         >
-          <BarChart xLabel="# images per patient" yLabel={`# patients${ippScale === 'log' ? ' (log scale)' : ''}`} log={ippScale === 'log'} bars={ippBars} valueLabels={ippRange === '20' && ippScale === 'linear'} />
+          <BarChart xLabel="# images per patient" yLabel="# patients" bars={ippBars} valueLabels={ippRange === '20'} />
         </Card>
 
         <Card title="Images by view position" subtitle={`Unit: images (n = ${fmt(o.images)}). PA = standing, posterior→anterior; AP = often supine/portable.`}>

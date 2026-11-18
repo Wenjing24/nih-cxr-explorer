@@ -7,7 +7,7 @@ import { describeFilters } from '../lib/filters';
 import { FilterPanel } from '../components/FilterPanel';
 import { BarChart } from '../components/BarChart';
 import { Card, Empty, fmt, Note, pct, Segmented } from '../components/chart';
-import { SET_COLORS } from '../theme';
+import { findingColor } from '../theme';
 
 type Measure = 'share' | 'count';
 
@@ -18,7 +18,7 @@ export function ImagesPerPatientPage({ ds, filters, setFilters }: PageProps) {
   const [sharedY, setSharedY] = useState<'shared' | 'free'>('shared');
   const base = useMemo(() => imagesPerPatient(ds, pre, null), [ds, pre]);
   const panels = useMemo(
-    () => filters.findings.map((f, i) => ({ finding: f, color: SET_COLORS[i], r: imagesPerPatient(ds, pre, findingBit(ds, f)) })),
+    () => filters.findings.map((f) => ({ finding: f, color: findingColor(ds.findings, f), r: imagesPerPatient(ds, pre, findingBit(ds, f)) })),
     [ds, pre, filters.findings],
   );
   const v = (r: IppResult, i: number) => (measure === 'share' ? (r.patients ? r.bins[i] / r.patients : 0) : r.bins[i]);
@@ -78,7 +78,7 @@ export function ImagesPerPatientPage({ ds, filters, setFilters }: PageProps) {
 
   return (
     <div className="page with-filters">
-      <FilterPanel ds={ds} filters={filters} setFilters={setFilters} idx={idx} findingsHint="One histogram per finding (max 3)." />
+      <FilterPanel ds={ds} filters={filters} setFilters={setFilters} idx={idx} findingsHint="One histogram per checked finding." />
       <div className="page-body">
         <div className="page-head">
           <div>
@@ -110,9 +110,9 @@ export function ImagesPerPatientPage({ ds, filters, setFilters }: PageProps) {
           ) : (
             <>
               {panels.length === 0 && (
-                <p className="hint banner">Select up to 3 findings in the filter panel to compare them against the all-patient reference below.</p>
+                <p className="hint banner">Select findings in the filter panel to compare them against the all-patient reference below.</p>
               )}
-              <div className={`multiples n${Math.min(all.length, 4)}`}>{all.map(panel)}</div>
+              <div className={`multiples n${Math.min(all.length, 5)}`}>{all.map(panel)}</div>
             </>
           )}
         </Card>

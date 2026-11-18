@@ -1,6 +1,4 @@
 node_modules
 dist
 tests/screenshots
-.tools
-.venv
 .DS_Store

@@ -13,7 +13,9 @@ let server;
 let base = process.argv[2];
 if (!base) {
   base = 'http://localhost:4317/';
-  server = spawn('npx', ['vite', 'preview', '--port', '4317', '--strictPort'], { stdio: 'ignore' });
+  // Run Vite's JS entry with the current Node binary: spawning `npx` needs a shell on Windows.
+  const vite = fileURLToPath(new URL('../node_modules/vite/bin/vite.js', import.meta.url));
+  server = spawn(process.execPath, [vite, 'preview', '--port', '4317', '--strictPort'], { stdio: 'ignore' });
   for (let i = 0; i < 50; i++) {
     try { if ((await fetch(base)).ok) break; } catch {}
     await new Promise((r) => setTimeout(r, 200));

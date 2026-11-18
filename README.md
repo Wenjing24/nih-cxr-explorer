@@ -25,42 +25,22 @@ Charts use a colour-blind-safe, Viridis-derived palette. Line styles, labels and
 
 ## Setup
 
-On Windows, open PowerShell in the repository directory and run:
+Requirements: Node ≥ 18 and Python 3 with pandas (pandas is only needed to regenerate the data).
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
-```
-
-No prior Conda, Python, Node.js or npm installation is required. The script
-downloads isolated copies of uv, Python 3.11 and the current Node.js LTS release
-into this repository, creates `.venv`, installs the Python dependencies from
-`requirements.txt`, installs the web dependencies and starts the development
-server. An internet connection is required the first time it runs.
-
-Open the URL shown in the terminal, normally <http://localhost:5173>. Press
-`Ctrl+C` to stop the server. The preprocessed data is already included, so the
-original CSV is only needed when regenerating it.
-
-Additional commands:
-
-```powershell
-.\.tools\node\npm.cmd run preprocess   # optional: regenerate the JSON data
-.\.tools\node\npm.cmd run build        # create the static site in dist/
-```
-
-To preprocess a CSV in another location, append its path after `--`, for example:
-
-```powershell
-.\.tools\node\npm.cmd run preprocess -- C:\data\Data_Entry_2017.csv
+```bash
+npm install
+npm run preprocess        # optional: regenerates public/data/images.json and tests/reference.json
+                          # from ../Data_Entry_2017.csv (or: python3 preprocess/preprocess.py path/to/csv)
+npm run dev               # http://localhost:5173
+npm run build             # static site in dist/
 ```
 
 ## Tests
 
-```powershell
-.\.tools\node\npm.cmd test
-.\.tools\node\npx.cmd playwright install chromium
-.\.tools\node\npm.cmd run build
-.\.tools\node\npm.cmd run e2e
+```bash
+npm test                  # 43 unit tests: TypeScript aggregations vs. independent pandas results
+npx playwright install chromium
+npm run build && npm run e2e   # 54 browser checks on desktop + phone widths, screenshots in tests/screenshots/
 ```
 
 ## Deploying to GitHub Pages
